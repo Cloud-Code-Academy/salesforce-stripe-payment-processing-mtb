@@ -1,7 +1,8 @@
 {
-  "orgName": "warrenwalters company",
-  "edition": "Developer",
-  "features": ["EnableSetPasswordInApi"],
+  "orgName": "Stripe Integration",
+  "edition": "Enterprise",
+  "language": "en_US",
+  "features": ["EnableSetPasswordInApi", "API", "Einstein1AIPlatform"],
   "settings": {
     "lightningExperienceSettings": {
       "enableS1DesktopEnabled": true
