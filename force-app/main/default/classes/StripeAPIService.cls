@@ -14,7 +14,7 @@ public with sharing class StripeAPIService {
             req.setBody(JSON.serialize(customerWrapper));
             HttpResponse res = http.send(req);
             // If the HTTP response code is successful, parse the JSON response and Id of created Stripe Customer
-            if (res.getStatusCode() = 200) {
+            if (res.getStatusCode() == 200) {
                 StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
                 customerId = stripeResponse.id;
             } 
