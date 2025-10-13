@@ -15,7 +15,7 @@
                 <field>Stripe_Price_ID__c</field>
             </layoutItems>
             <layoutItems>
-                <behavior>Required</behavior>
+                <behavior>Edit</behavior>
                 <field>Amount__c</field>
             </layoutItems>
             <layoutItems>
