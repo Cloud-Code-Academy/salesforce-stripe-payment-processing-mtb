@@ -20,11 +20,10 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
     }
 
     public void execute(QueueableContext context){
-        System.debug('Queueable started here:');
+        // Run Create Customer path
         if (calloutType == CREATE_CUSTOMER) {
             try {
                 String customerId = StripeAPIService.createCustomer(customerWrapper);
-                System.debug('customerId is here:' + customerId);
                 updateStripeCustomer(recordId, customerId);
             } catch (Exception ex) {
                 System.debug('Error occured: ' + ex.getMessage());
@@ -32,12 +31,26 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
 
         }
     }
-
+    //Utility method for updating Stripe Customer record with Id from successfull response
     private void updateStripeCustomer(Id recordId, String customerId){
         Stripe_Customer__c customer = new Stripe_Customer__c(
             Id = recordId,
             Stripe_Customer_ID__c = customerId
         );
-        update customer;
+        //Check whether Stripe_Customer__c object is available for update
+        if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
+            //Check whether Stripe_Customer_ID__c field of Stripe_Customer__c object is available for update
+            if (Schema.SObjectType.Stripe_Customer__c.fields.Stripe_Customer_ID__c.isUpdateable()) {
+                try {
+                    update as user customer;
+                } catch (Exception ex) {
+                    System.debug('Error occured while updating Stripe Customer record: ' + ex.getMessage());
+                }
+            } else {
+                throw new SecurityException('Stripe_Customer_ID__c field of Stripe_Customer__c is not available for update');
+            }
+        } else {
+            throw new SecurityException('Stripe_Customer__c object is not available for update');
+        }
     }
 }

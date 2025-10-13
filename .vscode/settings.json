@@ -12,5 +12,6 @@
     "**/Thumbs.db": true,
     ".mule": true
   },
-  "plantuml.exportOutDir": "diagrams/images"
+  "plantuml.exportOutDir": "diagrams/images",
+  "xml.preferences.showSchemaDocumentationType": "none"
 }
