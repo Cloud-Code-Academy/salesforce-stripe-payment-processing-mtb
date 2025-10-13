@@ -10,34 +10,43 @@ public with sharing class StripeCustomerTriggerHelper {
      * @throws SecurityException if user lacks update permissions on object or field
      */
     public static void populateNameFromContact(List<Stripe_Customer__c> newList){
-        Map<Id, Id> customerIdsToContactIds = new Map<Id, Id>();
+        Map<String, Id> customerIdsToContactIds = new Map<String, Id>();
         Map<Id, String> contactIdsToNames = new Map<Id, String>();
         //Check whether Stripe_Customer__c object is available for update
         if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
             for (Stripe_Customer__c customer : newList) {
                 if (customer.Contact__c != null) {
-                    customerIdsToContactIds.put(customer.Id, customer.Contact__c);
+                    customerIdsToContactIds.put(customer.Customer_Email__c, customer.Contact__c);
                 }
             }
-            if (!customerIdsToContactIds.isEmpty()) {
-                for (Contact cont : [SELECT Name FROM Contact
-                                        WHERE Id IN: customerIdsToContactIds.values() WITH USER_MODE]) {
-                    contactIdsToNames.put(cont.Id, cont.Name);
+            try{
+                if (!customerIdsToContactIds.isEmpty()) {
+                    for (Contact cont : [
+                        SELECT Name 
+                        FROM Contact
+                        WHERE Id IN: customerIdsToContactIds.values() 
+                        WITH USER_MODE
+                    ]) {
+                        contactIdsToNames.put(cont.Id, cont.Name);
+                    }
                 }
+            }
+            catch(Exception e){
+                System.debug('Error occured: ' + e.getMessage());
             }
             if (!customerIdsToContactIds.isEmpty()) {
                 //Check whether Customer_Name__c field of Stripe_Customer__c object is available for update
                 if (Schema.SObjectType.Stripe_Customer__c.fields.Customer_Name__c.isUpdateable()) {
                     for (Stripe_Customer__c customer : newList) {
                         //Update Customer_Name__c with Name of related Contact record
-                        customer.Customer_Name__c = contactIdsToNames.get(customerIdsToContactIds.get(customer.Id));
+                        customer.Customer_Name__c = contactIdsToNames.get(customerIdsToContactIds.get(customer.Customer_Email__c));
                     }
                 } else {
-                    throw new SecurityException('Customer_Name__c field of Stripe_Customer__c is not available for update');
+                    throw new SecurityException('User does not have edit access to Customer_Name__c field of Stripe_Customer__c object');
                 }
             }
         } else {
-            throw new SecurityException('Stripe_Customer__c object is not available for update');
+            throw new SecurityException('User does not have edit access to Stripe_Customer__c object');
         }
     }
     /**
