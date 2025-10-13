@@ -1,7 +1,6 @@
 public with sharing class StripeAPIService {
     private static final String API_NAMED_CREDENTIALS = 'callout:StripeAPI';
     private static final String CUSTOMER_ENDPOINT = '/v1/customers';
-    private static final String CLASS_NAME = 'StripeAPIService';
 
     // @param StripeWrapper.CustomerWrapper from the created Stripe Customer that contains its details.
     public static String createCustomer(StripeWrapper.CustomerWrapper customerWrapper){
@@ -15,17 +14,15 @@ public with sharing class StripeAPIService {
             req.setBody(JSON.serialize(customerWrapper));
             HttpResponse res = http.send(req);
             // If the HTTP response code is successful, parse the JSON response and Id of created Stripe Customer
-            if (res.getStatusCode() >= 200 && res.getStatusCode() <= 299) {
+            if (res.getStatusCode() >= 200) {
                 StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
                 customerId = stripeResponse.id;
-            } else {
-                // If the HTTP response code is not successful, throw StripeException
-                throw new StripeException(res, CLASS_NAME);
             } 
+            // If the HTTP response code is not successful, throw StripeException
+            throw new StripeException(res.getStatus()); 
         } catch (Exception ex) {
             // If the error occured when code was generating HttpRequest
             System.debug('Error happened while generating request: ' + ex.getMessage());
-            customerId = 'Error';
         }
         return customerId;
     }

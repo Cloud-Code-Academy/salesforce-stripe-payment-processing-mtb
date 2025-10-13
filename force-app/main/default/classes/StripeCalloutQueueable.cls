@@ -2,7 +2,7 @@
  * Queueable class to make asynchronous callouts to Stripe API
  */
 public class StripeCalloutQueueable implements Queueable, Database.AllowsCallouts{
-    public static final String CREATE_CUSTOMER = 'Create Customer';
+    public static final String CREATE_CUSTOMER = 'create_customer';
 
     private String calloutType;
     private Id recordId;
