@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>RunForAll__c</fullName>
+    <defaultValue>true</defaultValue>
+    <description>Determines if the trigger should execute for all records or only for specific conditions. When checked, the trigger runs regardless of user or profile restrictions.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <inlineHelpText>Determines if the trigger should execute for all records or only for specific conditions. When checked, the trigger runs regardless of user or profile restrictions.</inlineHelpText>
+    <label>RunForAll</label>
+    <type>Checkbox</type>
+</CustomField>

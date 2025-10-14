@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Stores configuration settings for Apex triggers to control their execution behaviour. Each record defines whether a specific trigger should run and for which contexts it should be active. This allows for flexible trigger management without code deployment.</description>
+    <label>ManageTrigger</label>
+    <pluralLabel>ManageTriggers</pluralLabel>
+    <visibility>Public</visibility>
+</CustomObject>
