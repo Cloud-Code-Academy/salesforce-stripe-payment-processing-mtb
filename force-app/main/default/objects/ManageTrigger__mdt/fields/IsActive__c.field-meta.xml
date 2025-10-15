@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>IsActive__c</fullName>
+    <defaultValue>true</defaultValue>
+    <description>Indicates whether this trigger is currently active. When unchecked, the trigger will be bypassed and will not execute.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <inlineHelpText>Indicates whether this trigger is currently active. When unchecked, the trigger will be bypassed and will not execute.</inlineHelpText>
+    <label>IsActive</label>
+    <type>Checkbox</type>
+</CustomField>
