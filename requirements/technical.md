@@ -65,7 +65,7 @@ This project emphasizes real-world integration patterns including:
 **Subscription Management (Salesforce → Stripe):**
 - Apex methods to create Stripe Checkout sessions
 - Subscription record creation with checkout tracking
-- Support for multiple subscription plans using Custom Metadata
+- Support for multiple subscription plans using Pricing Plans custom object
 - Queueable implementation for bulk subscription operations
 - Test coverage for subscription flows
 
