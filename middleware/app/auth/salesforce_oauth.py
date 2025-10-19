@@ -32,7 +32,7 @@ class SalesforceOAuth:
         self.client_secret = settings.salesforce_client_secret
         self.username = settings.salesforce_username
         self.password = settings.salesforce_password
-        self.security_token = settings.salesforce_security_token
+        # self.security_token = settings.salesforce_security_token
         self.instance_url = settings.salesforce_instance_url
         self.token_url = settings.salesforce_token_url
 
@@ -109,18 +109,17 @@ class SalesforceOAuth:
         try:
             # Prepare OAuth request data
             data = {
-                "grant_type": "password",
+                "grant_type": "client_credentials",
                 "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "username": self.username,
-                "password": f"{self.password}{self.security_token or ''}",
+                "client_secret": self.client_secret
             }
 
             logger.info(
                 "Authenticating with Salesforce",
                 extra={
                     "token_url": self.token_url,
-                    "username": self.username,
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
                 },
             )
 

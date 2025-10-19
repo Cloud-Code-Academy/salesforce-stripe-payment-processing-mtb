@@ -49,7 +49,7 @@ class SQSService:
             QueueException: If send fails
         """
         try:
-            async with self.session.client("sqs") as sqs:
+            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
                 # Serialize message body to JSON
                 body = json.dumps(message_body)
 
@@ -115,7 +115,7 @@ class SQSService:
             QueueException: If receive fails
         """
         try:
-            async with self.session.client("sqs") as sqs:
+            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
                 params = {
                     "QueueUrl": self.queue_url,
                     "MaxNumberOfMessages": min(max_messages, 10),
@@ -159,7 +159,7 @@ class SQSService:
             QueueException: If delete fails
         """
         try:
-            async with self.session.client("sqs") as sqs:
+            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
                 await sqs.delete_message(
                     QueueUrl=self.queue_url,
                     ReceiptHandle=receipt_handle,
@@ -192,7 +192,7 @@ class SQSService:
             QueueException: If operation fails
         """
         try:
-            async with self.session.client("sqs") as sqs:
+            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
                 response = await sqs.get_queue_attributes(
                     QueueUrl=self.queue_url,
                     AttributeNames=["All"],

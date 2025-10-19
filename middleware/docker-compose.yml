@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # FastAPI Middleware Application
   middleware:
@@ -56,15 +54,14 @@ services:
       - "4566:4566"
     environment:
       - SERVICES=sqs
-      - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
+      - DEBUG=0
+      - SKIP_INFRA_DOWNLOADS=1
       - AWS_DEFAULT_REGION=us-east-1
+      - PERSISTENCE=0
     volumes:
-      - localstack-data:/tmp/localstack
       - "./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh"
     networks:
       - middleware-network
-    restart: unless-stopped
 
   # Redis Commander (Optional - for debugging)
   redis-commander:
@@ -83,7 +80,6 @@ services:
 
 volumes:
   redis-data:
-  localstack-data:
 
 networks:
   middleware-network:

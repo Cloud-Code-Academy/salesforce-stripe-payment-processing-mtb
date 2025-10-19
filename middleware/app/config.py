@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     aws_region: str = Field(default="us-east-1")
     aws_access_key_id: Optional[str] = Field(default=None)
     aws_secret_access_key: Optional[str] = Field(default=None)
+    aws_endpoint_url: Optional[str] = Field(default=None)
 
     # SQS
     sqs_queue_url: str = Field(description="SQS queue URL for webhook events")
