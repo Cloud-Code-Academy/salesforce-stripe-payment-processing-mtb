@@ -213,20 +213,138 @@ Ensure the integration user has:
 1. Go to Stripe Dashboard → **Developers** → **API Keys**
 2. Copy your **Secret Key** (starts with `sk_test_` for test mode)
 
-### 2. Configure Webhook
+### 2. Configure Webhook - IMPORTANT ⚡
 
-1. Go to **Developers** → **Webhooks** → **Add Endpoint**
-2. Endpoint URL: `https://your-domain.com/webhook/stripe`
-3. Select events to listen to:
-   - `checkout.session.completed`
-   - `payment_intent.succeeded`
-   - `payment_intent.payment_failed`
-   - `customer.subscription.created`
-   - `customer.subscription.updated`
-   - `customer.subscription.deleted`
-   - `customer.updated`
+Stripe requires **publicly accessible HTTPS endpoints** for webhooks. Since `localhost:8000` is not publicly accessible, you have **three options** depending on your development stage:
 
-4. Copy the **Signing Secret** (starts with `whsec_`)
+#### Option A: Stripe CLI (RECOMMENDED for Development)
+
+**Best for:** Local development, testing, individual work
+
+The Stripe CLI creates a secure tunnel from Stripe to your localhost - no public URL needed!
+
+```bash
+# 1. Install Stripe CLI
+# macOS
+brew install stripe/stripe-cli/stripe
+
+# Windows (Scoop)
+scoop bucket add stripe https://github.com/stripe/scoop-stripe-cli.git
+scoop install stripe
+
+# Linux
+wget https://github.com/stripe/stripe-cli/releases/latest/download/stripe_linux_amd64.tar.gz
+tar -xvf stripe_linux_amd64.tar.gz
+sudo mv stripe /usr/local/bin/
+
+# 2. Login to Stripe
+stripe login
+
+# 3. Start webhook forwarding (keep this running!)
+stripe listen --forward-to localhost:8000/webhook/stripe
+
+# 4. Copy the webhook signing secret shown
+# Look for: "Your webhook signing secret is whsec_..."
+
+# 5. Update your .env file
+STRIPE_WEBHOOK_SECRET=whsec_abc123xyz...from_cli_output
+
+# 6. Restart middleware
+docker-compose restart middleware
+
+# 7. Test with triggers (in another terminal)
+stripe trigger payment_intent.succeeded
+stripe trigger checkout.session.completed
+stripe trigger customer.subscription.updated
+```
+
+**Benefits:**
+- ✅ No public URL needed
+- ✅ Real webhook signatures for testing
+- ✅ Easy event triggering with `stripe trigger`
+- ✅ Free and secure
+- ✅ Perfect for local development
+
+**When to use:** Week 2-3 development phase, individual testing
+
+---
+
+#### Option B: Ngrok (for Team Sharing/Demos)
+
+**Best for:** Sharing your local instance with teammates, quick demos
+
+```bash
+# 1. Install ngrok
+brew install ngrok  # macOS
+# Or download from https://ngrok.com/download
+
+# 2. Sign up and get auth token from https://ngrok.com
+ngrok config add-authtoken YOUR_AUTH_TOKEN
+
+# 3. Start your middleware
+docker-compose up -d
+
+# 4. Start ngrok tunnel
+ngrok http 8000
+
+# 5. Copy the public HTTPS URL shown
+# Example: https://abc123-def.ngrok-free.app
+
+# 6. Configure in Stripe Dashboard
+# Go to: Developers → Webhooks → Add Endpoint
+# URL: https://abc123-def.ngrok-free.app/webhook/stripe
+# Events: (select all events listed below)
+
+# 7. Copy webhook signing secret from Stripe Dashboard
+# Update .env: STRIPE_WEBHOOK_SECRET=whsec_from_dashboard
+
+# 8. Restart middleware
+docker-compose restart middleware
+```
+
+**Benefits:**
+- ✅ Real public HTTPS URL
+- ✅ Works with Stripe Dashboard
+- ✅ Team members can access your instance
+- ✅ Free tier available
+
+**Limitations:**
+- ⚠️ URL changes on restart (unless paid plan)
+- ⚠️ Computer must stay on
+- ⚠️ Free tier: 60 requests/min limit
+
+**When to use:** Team collaboration, sharing progress, quick demos
+
+---
+
+#### Option C: Cloud Deployment (for Production/Final Demo)
+
+**Best for:** Final presentation, team collaboration, production
+
+See [Deployment](#deployment) section below for detailed instructions.
+
+**When to use:** Week 4 presentation, final deliverable
+
+---
+
+### Webhook Events to Configure
+
+Regardless of which option you choose, configure these events:
+
+- ✅ `checkout.session.completed`
+- ✅ `payment_intent.succeeded`
+- ✅ `payment_intent.payment_failed`
+- ✅ `customer.subscription.created`
+- ✅ `customer.subscription.updated`
+- ✅ `customer.subscription.deleted`
+- ✅ `customer.updated`
+
+### Get Your Webhook Signing Secret
+
+The webhook signing secret location depends on your setup method:
+
+- **Stripe CLI:** Shown in terminal when you run `stripe listen`
+- **Ngrok/Cloud:** Stripe Dashboard → Developers → Webhooks → Click your endpoint → "Signing secret"
 
 ## Testing
 
@@ -262,6 +380,108 @@ stripe listen --forward-to localhost:8000/webhook/stripe
 stripe trigger payment_intent.succeeded
 stripe trigger checkout.session.completed
 ```
+
+## Team Collaboration
+
+This project supports **team-based development** with multiple collaboration models:
+
+### Model 1: Individual Development (RECOMMENDED for Week 2-3)
+
+Each team member runs their own middleware instance:
+
+```
+Team Member 1          Team Member 2          Team Member 3
+     ↓                      ↓                      ↓
+Own Middleware         Own Middleware         Own Middleware
+     ↓                      ↓                      ↓
+Own Scratch Org        Own Scratch Org        Own Scratch Org
+     ↓                      ↓                      ↓
+  Shared Stripe       Shared Stripe          Shared Stripe
+  Test Account        Test Account           Test Account
+```
+
+**Setup for each team member:**
+
+```bash
+# 1. Clone repository
+git clone <your-repo-url>
+cd salesforce-stripe-payment-processing-mtb/middleware
+
+# 2. Create personal .env
+cp .env.example .env
+
+# 3. Configure with:
+# - SHARED: Same Stripe API keys for all team members
+# - INDIVIDUAL: Own Salesforce scratch org credentials
+# - LOCAL: Own Docker containers (Redis, LocalStack)
+
+# 4. Start personal instance
+docker-compose up -d
+
+# 5. Use Stripe CLI for webhooks
+stripe listen --forward-to localhost:8000/webhook/stripe
+```
+
+**Benefits:**
+- ✅ No conflicts between team members
+- ✅ Independent development and testing
+- ✅ Works offline
+- ✅ No network configuration needed
+
+---
+
+### Model 2: Shared Development Instance (for Team Testing)
+
+One team member hosts the middleware, others access via Ngrok:
+
+```bash
+# Host (one team member):
+docker-compose up -d
+ngrok http 8000
+# Share URL: https://abc123.ngrok-free.app
+
+# Team members:
+curl https://abc123.ngrok-free.app/health
+open https://abc123.ngrok-free.app/docs
+```
+
+**When to use:** Integration testing, demos, showing progress
+
+---
+
+### Model 3: Cloud Deployment (for Final Demo)
+
+Deploy one instance to the cloud for final presentation:
+
+```bash
+# Deploy to Heroku (easiest)
+heroku create salesforce-stripe-team-demo
+heroku config:set STRIPE_API_KEY=sk_test_...
+git push heroku main
+
+# Everyone uses: https://salesforce-stripe-team-demo.herokuapp.com
+```
+
+**When to use:** Week 4 presentation, instructor evaluation
+
+---
+
+### Recommended Team Workflow
+
+**Week 2-3 (Development):**
+- Each member runs own middleware locally
+- Use Stripe CLI for webhook testing
+- Share code via Git, work independently
+
+**Week 3 (Integration Testing):**
+- One member runs Ngrok to share instance
+- Team tests integration points together
+- Optional: Quick Heroku deploy for team testing
+
+**Week 4 (Demo/Presentation):**
+- Deploy to cloud (Heroku or AWS)
+- Professional public endpoint
+- Use for final demonstration
 
 ## API Endpoints
 
