@@ -1,0 +1,78 @@
+@startuml Middleware System Architecture V2
+
+title Stripe-Salesforce Middleware - System Architecture with Throttling
+
+skinparam linetype ortho
+skinparam nodesep 150
+skinparam ranksep 120
+skinparam packagePadding 20
+
+!define LIGHTBLUE #ADD8E6
+!define LIGHTGREEN #90EE90
+!define LIGHTORANGE #FFD580
+!define LIGHTYELLOW #FFFACD
+
+' === STRIPE (LEFT) ===
+package "Stripe" LIGHTBLUE {
+    component [Webhooks] as stripe
+}
+
+' === MIDDLEWARE (CENTER) ===
+package "FastAPI Middleware" LIGHTGREEN {
+    component [Webhook\nEndpoint] as endpoint
+
+    component [Event\nQueue] as queue
+
+    component [Event\nProcessor] as processor
+
+    component [Rate\nLimiter] as ratelimiter
+
+    component [Salesforce\nClient] as client
+}
+
+' === SALESFORCE (RIGHT) ===
+package "Salesforce" LIGHTBLUE {
+    component [REST API] as rest
+
+    component [Bulk API] as bulk
+}
+
+' === AWS (BOTTOM CENTER) ===
+package "AWS Services" LIGHTORANGE {
+    database SQS as sqs
+
+    database Redis as redis
+
+    database Secrets as secrets
+}
+
+' === STEP 1-2: WEBHOOK RECEIPT ===
+stripe -right-> endpoint : 1. POST /webhook
+endpoint -left-> stripe : 2. 200 OK
+
+' === STEP 3: QUEUE TO SQS ===
+endpoint -down-> queue : 3. verify signature
+queue -down-> sqs : 4. buffer event
+
+' === STEP 5-6: PROCESS FROM SQS ===
+sqs -up-> processor : 5. poll event
+processor -down-> ratelimiter : 6. check rate limit
+
+' === STEP 7: RATE LIMITER DECISIONS ===
+ratelimiter -down-> client : 7a. allowed\n(under limit)
+ratelimiter -[#red]left-> sqs : <font color=red>7b. throttled\n(requeue)</font>
+
+' === STEP 8-9: SALESFORCE UPDATES ===
+client -right-> rest : 8. high priority\n(real-time)
+client -right-> bulk : 9. low priority\n(batched)
+
+' === SUPPORTING SERVICES (DOTTED) ===
+endpoint .down.> secrets : webhook\nsecret
+
+ratelimiter .down.> redis : check/increment\ncounters
+
+client .down.> redis : oauth\ntokens
+
+client .down.> secrets : credentials
+
+@enduml
