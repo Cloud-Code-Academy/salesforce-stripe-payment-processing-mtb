@@ -1,32 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
     <customValue>
-        <fullName>Daily</fullName>
+        <fullName>Day</fullName>
         <default>false</default>
         <label>Daily</label>
     </customValue>
     <customValue>
-        <fullName>Weekly</fullName>
+        <fullName>Week</fullName>
         <default>false</default>
         <label>Weekly</label>
     </customValue>
     <customValue>
-        <fullName>Bi-weekly</fullName>
-        <default>false</default>
-        <label>Bi-weekly</label>
-    </customValue>
-    <customValue>
-        <fullName>Monthly</fullName>
+        <fullName>Month</fullName>
         <default>false</default>
         <label>Monthly</label>
     </customValue>
     <customValue>
-        <fullName>Quarterly</fullName>
-        <default>false</default>
-        <label>Quarterly</label>
-    </customValue>
-    <customValue>
-        <fullName>Yearly</fullName>
+        <fullName>Year</fullName>
         <default>false</default>
         <label>Yearly</label>
     </customValue>

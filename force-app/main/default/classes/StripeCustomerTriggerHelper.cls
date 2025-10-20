@@ -1,52 +1,40 @@
 public with sharing class StripeCustomerTriggerHelper {
     /**
-     * Populates the Customer_Name__c field with the name from the related Contact record
-     * 
-     * This method queries Contact records associated with Stripe Customer records
-     * and updates the Customer_Name__c field with the Contact's name.
-     * Enforces object and field-level security before performing updates.
+     * Populates the Stripe_Customer_ID__c field with the Stripe_Customer_ID__c on the related Contact record
      * 
      * @param newList List of Stripe_Customer__c records to process
      * @throws SecurityException if user lacks update permissions on object or field
      */
-    public static void populateNameFromContact(List<Stripe_Customer__c> newList){
-        Map<String, Id> customerIdsToContactIds = new Map<String, Id>();
-        Map<Id, String> contactIdsToNames = new Map<Id, String>();
+    public static void populateStripeCustomerIdOnRelatedContact(List<Stripe_Customer__c> newList, Map<Id, Stripe_Customer__c> oldMap){
+        List<Contact> contactsForUpdate = new List<Contact>();
         //Check whether Stripe_Customer__c object is available for update
-        if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
+        if (Schema.SObjectType.Contact.isUpdateable()) {
             for (Stripe_Customer__c customer : newList) {
-                if (customer.Contact__c != null) {
-                    customerIdsToContactIds.put(customer.Customer_Email__c, customer.Contact__c);
+                Stripe_Customer__c oldCustomer = oldMap.get(customer.Id);
+                if (oldCustomer != null && customer.Contact__c != null
+                    && customer.Stripe_Customer_ID__c != null
+                    && oldCustomer.Stripe_Customer_ID__c != customer.Stripe_Customer_ID__c) {
+                    Contact cont = new Contact();
+                    cont.Id = customer.Contact__c;
+                    //Check whether Stripe_Customer_ID__c field of Contact object is available for update
+                    if (Schema.SObjectType.Contact.fields.Stripe_Customer_ID__c.isUpdateable()) {
+                        cont.Stripe_Customer_ID__c = customer.Stripe_Customer_ID__c;
+                    } else {
+                        throw new SecurityException('User does not have edit access to Stripe_Customer_ID__c field of Contact object');
+                    }
+                    contactsForUpdate.add(cont);
                 }
             }
             try{
-                if (!customerIdsToContactIds.isEmpty()) {
-                    for (Contact cont : [
-                        SELECT Name 
-                        FROM Contact
-                        WHERE Id IN: customerIdsToContactIds.values() 
-                        WITH USER_MODE
-                    ]) {
-                        contactIdsToNames.put(cont.Id, cont.Name);
-                    }
+                if (!contactsForUpdate.isEmpty()) {
+                    update contactsForUpdate;
                 }
-            }
-            catch(Exception e){
-                System.debug('Error occured: ' + e.getMessage());
-            }
-            if (!customerIdsToContactIds.isEmpty()) {
-                //Check whether Customer_Name__c field of Stripe_Customer__c object is available for update
-                if (Schema.SObjectType.Stripe_Customer__c.fields.Customer_Name__c.isUpdateable()) {
-                    for (Stripe_Customer__c customer : newList) {
-                        //Update Customer_Name__c with Name of related Contact record
-                        customer.Customer_Name__c = contactIdsToNames.get(customerIdsToContactIds.get(customer.Customer_Email__c));
-                    }
-                } else {
-                    throw new SecurityException('User does not have edit access to Customer_Name__c field of Stripe_Customer__c object');
-                }
+            } catch(Exception e){
+                Logger.error('Failed to update Stripe Customer: ', e);
+                Logger.saveLog();
             }
         } else {
-            throw new SecurityException('User does not have edit access to Stripe_Customer__c object');
+            throw new SecurityException('User does not have edit access to Contact object');
         }
     }
     /**
@@ -81,7 +69,8 @@ public with sharing class StripeCustomerTriggerHelper {
                     System.enqueueJob(callout);
                 }
             } catch (Exception ex) {
-                System.debug('Error occured: ' + ex.getMessage());
+                Logger.error('Failed to make callout: ', ex);
+                Logger.saveLog();
             }
             
         }

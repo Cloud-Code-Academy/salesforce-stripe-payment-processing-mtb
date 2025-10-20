@@ -14,4 +14,27 @@ public class StripeWrapper {
             this.phone = phone;
         }
     }
+    public class PricingPlanWrapper{
+        public String currency_x;
+        public RecurringDetails recurring;
+        public String product;
+        public Decimal unit_amount;
+
+        public PricingPlanWrapper(String currencyName, String interval, Decimal amount, String product){
+            this.currency_x = currencyName;
+            this.recurring = new RecurringDetails();
+            this.recurring.interval = interval;
+            this.unit_amount = amount;
+            this.product = product;
+        }
+    }
+    public class RecurringDetails{
+        public String interval;
+    }
+    public class ProductWrapper{
+        public String name;
+        public ProductWrapper(String productName){
+            this.name = productName;
+        }
+    }
 }
