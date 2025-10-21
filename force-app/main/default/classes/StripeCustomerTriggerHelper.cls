@@ -27,7 +27,7 @@ public with sharing class StripeCustomerTriggerHelper {
             }
             try{
                 if (!contactsForUpdate.isEmpty()) {
-                    update contactsForUpdate;
+                    update as user contactsForUpdate;
                 }
             } catch(Exception e){
                 Logger.error('Failed to update Stripe Customer: ', e);

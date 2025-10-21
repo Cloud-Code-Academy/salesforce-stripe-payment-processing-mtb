@@ -1,6 +1,7 @@
 public class StripeWrapper {
     // Used to get Id of created Stripe Customer
     public String id { get; set; }
+    public String url { get; set; }
 
     // Wrapper for Customer Object
     public class CustomerWrapper{

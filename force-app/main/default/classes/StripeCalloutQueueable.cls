@@ -104,8 +104,8 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
             }
         } else if (calloutType == CREATE_SESSION) {
             try {
-                Map<String, Object> sessionData = StripeSubscriptionService.createSession(customerId, priceId);
-                updateStripeSubscriptionWithSessionData(recordId, sessionData);
+                StripeWrapper stripeResponse = StripeAPIService.createSession(customerId, priceId);
+                updateStripeSubscriptionWithSessionData(recordId, stripeResponse);
             } catch (Exception ex) {
                 Logger.error('Failed to get subscriptionId/update Stripe Subscription record: ', ex);
                 Logger.saveLog();
@@ -157,11 +157,11 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
             throw new SecurityException('Stripe_Subscription__c object is not available for update');
         }
     }
-    private void updateStripeSubscriptionWithSessionData(Id recordId, Map<String, Object> sessionData){
+    private void updateStripeSubscriptionWithSessionData(Id recordId, StripeWrapper stripeResponse){
         Stripe_Subscription__c subscription = new Stripe_Subscription__c(
             Id = recordId,
-            Checkout_URL__c = (String)sessionData.get('url'),
-            Stripe_Checkout_Session_ID__c = (String)sessionData.get('id'),
+            Checkout_URL__c = stripeResponse.url,
+            Stripe_Checkout_Session_ID__c = stripeResponse.id,
             Sync_Status__c = 'Checkout Created'
         );
         if (Schema.SObjectType.Stripe_Subscription__c.isUpdateable()){

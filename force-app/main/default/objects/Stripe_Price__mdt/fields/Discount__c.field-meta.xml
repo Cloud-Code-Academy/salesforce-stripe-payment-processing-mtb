@@ -3,8 +3,8 @@
     <fullName>Discount__c</fullName>
     <fieldManageability>DeveloperControlled</fieldManageability>
     <label>Discount</label>
-    <precision>18</precision>
+    <precision>4</precision>
     <required>false</required>
-    <scale>0</scale>
+    <scale>2</scale>
     <type>Percent</type>
 </CustomField>

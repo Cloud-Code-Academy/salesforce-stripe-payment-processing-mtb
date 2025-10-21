@@ -15,7 +15,7 @@ public with sharing class PricingPlanTriggerHelper {
                 }
             }
             if (!subscriptionsForUpdate.isEmpty()) {
-                update subscriptionsForUpdate;
+                update as user subscriptionsForUpdate;
             }
         } else {
             throw new SecurityException('User does not have access to Stripe_Subscription__c object');
@@ -36,7 +36,7 @@ public with sharing class PricingPlanTriggerHelper {
                 }
             }
             if (!subscriptionsForUpdate.isEmpty()) {
-                update subscriptionsForUpdate;
+                update as user subscriptionsForUpdate;
             }
         } else {
             throw new SecurityException('User does not have access to Stripe_Subscription__c object');
@@ -90,7 +90,7 @@ public with sharing class PricingPlanTriggerHelper {
                 }
              }
              if (!pricingTierForInsert.isEmpty()) {
-                insert pricingTierForInsert;
+                insert as user pricingTierForInsert;
              }
         } else {
             throw new SecurityException('User does not have access to Pricing_Plan__c object');

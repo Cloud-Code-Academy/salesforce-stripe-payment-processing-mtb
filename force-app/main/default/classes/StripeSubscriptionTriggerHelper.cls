@@ -84,7 +84,7 @@ public with sharing class StripeSubscriptionTriggerHelper {
             }
         }
         if (!pricingPlansForInsert.isEmpty()) {
-            insert pricingPlansForInsert;
+            insert as user pricingPlansForInsert;
         }
     }
 }
