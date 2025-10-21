@@ -1,0 +1,86 @@
+services:
+  # FastAPI Middleware Application
+  middleware:
+    build:
+      context: .
+      target: development
+    container_name: salesforce-stripe-middleware
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/stripe-webhook-events
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+    depends_on:
+      - redis
+      - localstack
+    networks:
+      - middleware-network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: middleware-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - middleware-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LocalStack for SQS (Development)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: middleware-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs
+      - DEBUG=0
+      - SKIP_INFRA_DOWNLOADS=1
+      - AWS_DEFAULT_REGION=us-east-1
+      - PERSISTENCE=0
+    volumes:
+      - "./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh"
+    networks:
+      - middleware-network
+
+  # Redis Commander (Optional - for debugging)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: middleware-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - middleware-network
+    profiles:
+      - debug
+
+volumes:
+  redis-data:
+
+networks:
+  middleware-network:
+    driver: bridge

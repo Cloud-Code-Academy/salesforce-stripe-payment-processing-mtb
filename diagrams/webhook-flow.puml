@@ -1,0 +1,269 @@
+@startuml Webhook Processing Flow
+!theme plain
+skinparam sequenceMessageAlign center
+
+title Stripe Webhook → Middleware → Salesforce Flow
+
+actor "Stripe" as Stripe
+participant "FastAPI\nWebhook Endpoint" as API
+participant "Stripe Service\n(Signature Verify)" as Verify
+queue "SQS Queue" as SQS
+participant "Event Router" as Router
+participant "Event Handler\n(Customer/Sub/Payment)" as Handler
+participant "Rate Limiter" as RateLimit
+participant "Salesforce Client" as SFClient
+participant "OAuth Manager" as OAuth
+database "Redis" as Redis
+participant "Salesforce" as SF
+queue "Dead Letter Queue" as DLQ
+participant "Coralogix\n(Logging)" as Log
+
+== Webhook Receipt (< 500ms) ==
+
+Stripe -> API: POST /webhook/stripe\n+ Stripe-Signature header\n+ Event payload
+activate API
+
+API -> Verify: Verify signature
+activate Verify
+Verify -> Verify: HMAC-SHA256 validation
+alt Signature Valid
+    Verify --> API: ✓ Valid
+else Signature Invalid
+    Verify --> API: ✗ Invalid
+    API --> Stripe: 401 Unauthorized
+    API -> Log: Log unauthorized attempt
+    deactivate Verify
+    deactivate API
+    [<- Stripe
+end
+
+API -> SQS: Push event to queue
+activate SQS
+SQS --> API: Message ID
+API -> Log: Log webhook received
+API --> Stripe: 200 OK
+deactivate API
+[<- Stripe
+
+note right of API
+    **Quick Response**
+    Return 200 OK within 500ms
+    Stripe requires fast response
+end note
+
+== Asynchronous Processing ==
+
+SQS -> Router: Poll message
+deactivate SQS
+activate Router
+
+Router -> Router: Parse event type
+note right of Router
+    **Event Type Examples:**
+    - customer.updated
+    - checkout.session.completed
+    - payment_intent.succeeded
+    - subscription.deleted
+end note
+
+Router -> Router: Determine priority
+alt High Priority Event (Real-time)
+    note right of Router
+        **High Priority:**
+        - payment_intent.payment_failed
+        - customer.subscription.deleted
+        - checkout.session.completed
+    end note
+    Router -> Handler: Route to handler
+else Low Priority Event (Batched)
+    note right of Router
+        **Low Priority:**
+        - customer.updated
+        - metadata changes
+    end note
+    Router -> Redis: Batch in Redis
+    activate Redis
+    Redis --> Router: Cached
+    deactivate Redis
+    Router -> Log: Log batched
+    deactivate Router
+    [<- Router
+    note right of Redis
+        **Batch Processing:**
+        Every 5 minutes or 100 events
+        → Send to Bulk API
+    end note
+end
+
+== High Priority Processing ==
+
+activate Handler
+Handler -> Handler: Parse event payload
+Handler -> Handler: Validate data
+
+Handler -> RateLimit: Check rate limit
+activate RateLimit
+RateLimit -> Redis: Get call count\n(sliding window)
+activate Redis
+Redis --> RateLimit: Current count
+deactivate Redis
+
+alt Under Limit (< 80%)
+    RateLimit --> Handler: ✓ Proceed
+else Approaching Limit (> 80%)
+    RateLimit --> Handler: ⚠ Throttle
+    Handler -> Handler: Wait 2s
+    Handler -> RateLimit: Retry check
+end
+deactivate RateLimit
+
+Handler -> SFClient: Create/Update record
+activate SFClient
+
+SFClient -> OAuth: Get access token
+activate OAuth
+OAuth -> Redis: Check cached token
+activate Redis
+Redis --> OAuth: Token or null
+
+alt Token Cached
+    OAuth --> SFClient: Return token
+else Token Expired/Missing
+    OAuth -> SF: POST /oauth2/token\n(client_credentials)
+    activate SF
+    SF --> OAuth: Access token
+    deactivate SF
+    OAuth -> Redis: Cache token (TTL: 2h)
+    OAuth --> SFClient: Return token
+end
+deactivate Redis
+deactivate OAuth
+
+SFClient -> SF: POST /services/data/v59.0/sobjects/\nPayment_Transaction__c
+activate SF
+alt Success (2xx)
+    SF --> SFClient: Record ID
+    SFClient -> RateLimit: Increment counter
+    activate RateLimit
+    RateLimit -> Redis: Increment sliding window
+    activate Redis
+    Redis --> RateLimit: Updated
+    deactivate Redis
+    deactivate RateLimit
+
+    SFClient --> Handler: ✓ Success
+    Handler -> SQS: Delete message
+    activate SQS
+    SQS --> Handler: Deleted
+    deactivate SQS
+    Handler -> Log: Log success
+    deactivate Handler
+
+else Rate Limited (429)
+    SF --> SFClient: 429 Too Many Requests
+    SFClient --> Handler: Retry later
+    Handler -> Handler: Exponential backoff\n(2s, 4s, 8s, 16s, 32s)
+    Handler -> Handler: Retry attempt +1
+
+else Server Error (5xx)
+    SF --> SFClient: 5xx Server Error
+    SFClient --> Handler: Retry
+    Handler -> Handler: Exponential backoff
+    Handler -> Handler: Retry attempt +1
+
+else Client Error (4xx)
+    SF --> SFClient: 4xx Client Error
+    SFClient --> Handler: Invalid request
+    Handler -> DLQ: Send to DLQ\n(permanent failure)
+    activate DLQ
+    DLQ --> Handler: Queued
+    deactivate DLQ
+    Handler -> Log: Log error\n(correlation ID)
+    Handler -> Log: Alert admin
+end
+deactivate SF
+deactivate SFClient
+
+== Retry Logic (Exponential Backoff) ==
+
+loop Retry up to 5 times
+    alt Retry Attempt 1-5
+        note right of Handler
+            **Backoff Intervals:**
+            Attempt 1: 2 seconds
+            Attempt 2: 4 seconds
+            Attempt 3: 8 seconds
+            Attempt 4: 16 seconds
+            Attempt 5: 32 seconds
+            (No jitter)
+        end note
+        Handler -> Handler: Wait (exponential)
+        Handler -> SFClient: Retry API call
+        activate SFClient
+        SFClient -> SF: Retry request
+        activate SF
+        alt Success
+            SF --> SFClient: Success
+            SFClient --> Handler: ✓ Success
+            Handler -> Log: Log success after retry
+            [<- Handler
+        else Still Failing
+            SF --> SFClient: Error
+            SFClient --> Handler: Still failing
+            Handler -> Handler: Continue retry loop
+        end
+        deactivate SF
+        deactivate SFClient
+    else Max Retries Exceeded (5)
+        Handler -> DLQ: Send to Dead Letter Queue
+        activate DLQ
+        DLQ --> Handler: Queued for manual review
+        deactivate DLQ
+        Handler -> Log: Log failure\n(Alert admin)
+        Handler -> Log: Send PagerDuty alert
+        [<- Handler
+    end
+end
+
+== Monitoring & Observability ==
+
+note over Log
+    **Structured Logs (JSON):**
+    {
+      "timestamp": "2025-10-13T14:30:00Z",
+      "level": "INFO",
+      "correlation_id": "req_abc123",
+      "event_type": "payment_intent.succeeded",
+      "stripe_event_id": "evt_xyz789",
+      "sf_record_id": "a0X...",
+      "processing_time_ms": 234,
+      "retry_count": 0,
+      "status": "success"
+    }
+end note
+
+legend right
+    **Response Time Targets:**
+    - Webhook receipt → 200 OK: < 500ms
+    - Event processing: < 5s (p95)
+    - Bulk batch processing: < 30s
+
+    **Reliability:**
+    - Max 5 retry attempts
+    - Exponential backoff (no jitter)
+    - DLQ for permanent failures
+    - < 1% error rate target
+
+    **Rate Limiting:**
+    - Sliding window algorithm
+    - Throttle at 80% of limit
+    - Dynamic backoff
+
+    **Observability:**
+    - Correlation IDs for tracing
+    - Structured JSON logs
+    - Real-time metrics
+    - Coralogix integration
+end legend
+
+@enduml
