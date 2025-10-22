@@ -1,3 +1,8 @@
+/**
+ * @description Wrapper classes for Stripe API request and response data. Provides structured objects for serializing
+ *              and deserializing JSON data when communicating with Stripe endpoints. Includes wrappers for customers,
+ *              products, pricing plans, and API responses.
+ */
 public class StripeWrapper {
     // Used to get Id of created Stripe Customer
     public String id { get; set; }
@@ -8,32 +13,27 @@ public class StripeWrapper {
         public String name;
         public String email;
         public String phone;
-        // Assigning incoming parameters to Wrapper Class variables
+        /**
+         * @description Constructor to initialize customer wrapper with contact information.
+         * @param name Full name of the customer
+         * @param email Email address of the customer
+         * @param phone Phone number of the customer
+         */
         public CustomerWrapper(String name, String email, String phone){
             this.name = name;
             this.email = email;
             this.phone = phone;
         }
     }
-    public class PricingPlanWrapper{
-        public String currency_x;
-        public RecurringDetails recurring;
-        public String product;
-        public Decimal unit_amount;
-
-        public PricingPlanWrapper(String currencyName, String interval, Decimal amount, String product){
-            this.currency_x = currencyName;
-            this.recurring = new RecurringDetails();
-            this.recurring.interval = interval;
-            this.unit_amount = amount;
-            this.product = product;
-        }
-    }
-    public class RecurringDetails{
-        public String interval;
-    }
+    /**
+     * @description Wrapper class for Stripe Product data used in API requests.
+     */
     public class ProductWrapper{
         public String name;
+        /**
+         * @description Constructor to initialize product wrapper with product name.
+         * @param productName Name/description of the Stripe product
+         */
         public ProductWrapper(String productName){
             this.name = productName;
         }

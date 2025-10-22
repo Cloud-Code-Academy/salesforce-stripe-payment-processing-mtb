@@ -48,31 +48,33 @@ public with sharing class StripeCustomerTriggerHelper {
      */
     public static void processCustomerAfterInsert(List<Stripe_Customer__c> newList){
         List<Stripe_Customer__c> stripeCustomersForProcess = new List<Stripe_Customer__c>();
-
-        //Filter out records that already have Customer ID
-        for (Stripe_Customer__c customer : newList) {
-            if (String.isBlank(customer.Stripe_Customer_ID__c)) {
-                stripeCustomersForProcess.add(customer);
-            }
-        }
-        // Loop through each Customer
-        for (Stripe_Customer__c filteredCustomer : stripeCustomersForProcess) {
-            // Enqueue the callout
-            try {
-                StripeCalloutQueueable callout = new StripeCalloutQueueable(
-                    filteredCustomer.Id,
-                    filteredCustomer.Customer_Name__c,
-                    filteredCustomer.Customer_Email__c,
-                    filteredCustomer.Customer_Phone__c
-                );
-                if (!Test.isRunningTest()) {
-                    System.enqueueJob(callout);
+        if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
+            //Filter out records that already have Customer ID
+            for (Stripe_Customer__c customer : newList) {
+                if (String.isBlank(customer.Stripe_Customer_ID__c)) {
+                    stripeCustomersForProcess.add(customer);
                 }
-            } catch (Exception ex) {
-                Logger.error('Failed to make callout: ', ex);
-                Logger.saveLog();
             }
-            
+            // Loop through each Customer
+            for (Stripe_Customer__c filteredCustomer : stripeCustomersForProcess) {
+                // Enqueue the callout
+                try {
+                    StripeCalloutQueueable callout = new StripeCalloutQueueable(
+                        filteredCustomer.Id,
+                        filteredCustomer.Customer_Name__c,
+                        filteredCustomer.Customer_Email__c,
+                        filteredCustomer.Customer_Phone__c
+                    );
+                    if (!Test.isRunningTest()) {
+                        System.enqueueJob(callout);
+                    }
+                } catch (Exception ex) {
+                    Logger.error('Failed to make callout: ', ex);
+                    Logger.saveLog();
+                }
+            }
+        } else {
+            throw new SecurityException('User does not have edit access to Stripe_Customer__c object');
         }
     }
 }

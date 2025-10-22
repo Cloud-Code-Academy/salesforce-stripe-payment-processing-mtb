@@ -7,7 +7,14 @@ public with sharing class StripeAPIService {
     private static final String SUBSCRIPTION_ENDPOINT = '/v1/subscriptions';
     private static final String SESSION_ENDPOINT = '/v1/checkout/sessions';
 
-    // @param StripeWrapper.CustomerWrapper from the created Stripe Customer that contains its details.
+    /**
+     * @description Creates a new customer in Stripe via API callout and returns the generated Stripe customer ID.
+     *              Constructs a URL-encoded request body with customer details (name, email, phone), sends it to the
+     *              Stripe Customer API endpoint, and parses the response to extract the customer ID. Logs errors if
+     *              the callout fails or returns a non-200 status code.
+     * @param customerWrapper Wrapper object containing customer information (name, email, phone)
+     * @return String The Stripe customer ID if successful, null if an error occurs
+     */
     public static String createCustomer(StripeWrapper.CustomerWrapper customerWrapper){
         String customerId;
         try {
@@ -31,6 +38,13 @@ public with sharing class StripeAPIService {
         }
         return customerId;
     }
+    /**
+     * @description Creates a new price in Stripe via API callout and returns the generated Stripe price ID.
+     *              Sends a pre-formatted request body to the Stripe Price API endpoint and parses the response
+     *              to extract the price ID. Logs errors if the callout fails or encounters issues during execution.
+     * @param requestBody URL-encoded string containing price configuration parameters for Stripe API
+     * @return String The Stripe price ID if successful, null if an error occurs
+     */
     public static String createPrice(String requestBody){
         String priceId;
         try {
@@ -47,6 +61,14 @@ public with sharing class StripeAPIService {
         }
         return priceId;
     }
+    /**
+     * @description Creates a new product in Stripe via API callout and returns the generated Stripe product ID.
+     *              Constructs a URL-encoded request body with the product name, sends it to the Stripe Product API
+     *              endpoint, and parses the response to extract the product ID. Logs errors if the callout fails
+     *              or encounters issues during execution.
+     * @param productWrapper Wrapper object containing product information (name)
+     * @return String The Stripe product ID if successful, null if an error occurs
+     */
     public static String createProduct(StripeWrapper.ProductWrapper productWrapper){
         String productId;
         try {
@@ -64,6 +86,16 @@ public with sharing class StripeAPIService {
         }
         return productId;
     }
+    /**
+     * @description Creates a new subscription in Stripe via API callout and returns the generated Stripe subscription ID.
+     *              Constructs a URL-encoded request body with customer ID, price ID, and default payment method, sends it
+     *              to the Stripe Subscription API endpoint, and parses the response to extract the subscription ID. Logs
+     *              errors if the callout fails or encounters issues during execution.
+     * @param customerId The Stripe customer ID to associate with the subscription
+     * @param priceId The Stripe price ID for the subscription item
+     * @param defaultMethodId The Stripe payment method ID to use as default for the subscription
+     * @return String The Stripe subscription ID if successful, null if an error occurs
+     */
     public static String createSubscription(String customerId, String priceId, String defaultMethodId){
         String subscriptionId;
         try {
@@ -82,6 +114,14 @@ public with sharing class StripeAPIService {
         }
         return subscriptionId;
     }
+    /**
+     * @description Creates a default payment method in Stripe via API callout and returns the generated payment method ID.
+     *              Constructs a URL-encoded request body with a test card token ('tok_visa'), sends it to the Stripe
+     *              Payment Method API endpoint, and parses the response to extract the payment method ID. Logs errors
+     *              if the callout fails or encounters issues during execution.
+     * @param customerId The Stripe customer ID (currently unused in implementation but may be intended for future use)
+     * @return String The Stripe payment method ID if successful, null if an error occurs
+     */
     public static String createDefaultMethod(String customerId){
         String defaultMethodId;
         try {
@@ -99,6 +139,15 @@ public with sharing class StripeAPIService {
         }
         return defaultMethodId;
     }
+    /**
+     * @description Attaches a payment method to a Stripe customer via API callout and returns the attached payment method ID.
+     *              Sends a request to the Stripe Payment Method attach endpoint to associate the payment method with the
+     *              specified customer. Parses the response to extract the payment method ID. Logs errors if the callout
+     *              fails or encounters issues during execution.
+     * @param defaultMethodId The Stripe payment method ID to attach to the customer
+     * @param customerId The Stripe customer ID to which the payment method will be attached
+     * @return String The attached payment method ID if successful, null if an error occurs
+     */
     public static String attachPaymentMethod(String defaultMethodId, String customerId){
         String attachedMethodId;
         try {
@@ -115,6 +164,15 @@ public with sharing class StripeAPIService {
         }
         return attachedMethodId;
     }
+    /**
+     * @description Creates a Stripe Checkout Session for subscription payment and returns the session details.
+     *              Constructs a URL-encoded request body with customer ID, price ID, quantity, mode (subscription),
+     *              and success URL, then sends it to the Stripe Checkout Session API endpoint. Parses and returns
+     *              the complete session response wrapper. Logs errors if the callout fails or encounters issues.
+     * @param customerId The Stripe customer ID for the checkout session
+     * @param priceId The Stripe price ID for the subscription line item
+     * @return StripeWrapper The complete Stripe session response if successful, null if an error occurs
+     */
     public static StripeWrapper createSession(String customerId, String priceId){
         StripeWrapper stripeResponse;
         try {
@@ -134,6 +192,15 @@ public with sharing class StripeAPIService {
         }
         return stripeResponse;
     }
+    /**
+     * @description Executes an HTTP POST callout to Stripe API and returns the response.
+     *              Constructs and sends an HTTP request with URL-encoded content type to the specified endpoint,
+     *              logs the response status and body for debugging, and handles exceptions. Always throws a
+     *              StripeException after receiving a response (appears to be incomplete error handling logic).
+     * @param endPoint The full URL endpoint for the Stripe API callout
+     * @param requestBody The URL-encoded request body containing API parameters
+     * @return HttpResponse The HTTP response from Stripe API if successful, null if an error occurs
+     */
     public static HttpResponse makeCallout(String endPoint, String requestBody){
         HttpResponse res;
         try {

@@ -1,5 +1,7 @@
 /**
- * Queueable class to make asynchronous callouts to Stripe API
+ * @description Queueable class for executing asynchronous Stripe API callouts. Supports creating customers, products,
+ *              subscriptions, and checkout sessions with proper chaining of dependent operations. Implements security
+ *              checks for object and field-level permissions before performing DML operations.
  */
 public class StripeCalloutQueueable implements Queueable, Database.AllowsCallouts{
     public static final String CREATE_CUSTOMER = 'create_customer';
@@ -18,7 +20,14 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
     private String defaultMethodId;
     private StripeWrapper.CustomerWrapper customerWrapper;
     private StripeWrapper.ProductWrapper productWrapper;
-
+    /**
+     * @description Constructor for customer creation callouts. Initializes the queueable job to create a Stripe customer
+     *              using the provided contact information.
+     * @param recordId Salesforce record ID of the Stripe_Customer__c record to update after creation
+     * @param customerName Full name of the customer
+     * @param customerEmail Email address of the customer
+     * @param customerPhone Phone number of the customer
+     */
     public StripeCalloutQueueable(
         Id recordId,
         String customerName,
@@ -29,6 +38,15 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         this.recordId = recordId;
         this.customerWrapper = new StripeWrapper.CustomerWrapper(customerName, customerEmail, customerPhone);
     }
+    /**
+     * @description Constructor for product and price creation callouts. Initializes the queueable job to create a Stripe
+     *              product and its associated recurring price.
+     * @param recordId Salesforce record ID of the Pricing_Plan__c record to update after creation
+     * @param currencyName Currency code for the price (e.g., 'USD', 'EUR')
+     * @param reccuringInterval Billing interval for recurring price (e.g., 'month', 'year')
+     * @param amount Price amount in the smallest currency unit (e.g., cents)
+     * @param product Product name/description
+     */
     public StripeCalloutQueueable(
         Id recordId,
         String currencyName,
@@ -44,6 +62,14 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         this.amount = amount;
         this.productWrapper = new StripeWrapper.ProductWrapper(product);
     }
+    /**
+     * @description Constructor for subscription creation callouts. Initializes the queueable job to create a Stripe
+     *              subscription with the specified customer, price, and payment method.
+     * @param customerId Stripe customer ID to associate with the subscription
+     * @param recordId Salesforce record ID of the Stripe_Subscription__c record to update after creation
+     * @param priceId Stripe price ID for the subscription
+     * @param defaultMethodId Stripe payment method ID to use for the subscription
+     */
     public StripeCalloutQueueable(
         String customerId,
         Id recordId,
@@ -56,6 +82,13 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         this.priceId = priceId;
         this.defaultMethodId = defaultMethodId;
     }
+    /**
+     * @description Constructor for checkout session creation callouts. Initializes the queueable job to create a Stripe
+     *              Checkout Session for subscription payment.
+     * @param customerId Stripe customer ID for the checkout session
+     * @param priceId Stripe price ID for the subscription line item
+     * @param recordId Salesforce record ID of the Stripe_Subscription__c record to update with session details
+     */
     public StripeCalloutQueueable(
         String customerId,
         String priceId,
@@ -66,7 +99,12 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         this.priceId = priceId;
         this.recordId = recordId;
     }
-
+    /**
+     * @description Executes the queueable job based on the callout type. Routes to the appropriate Stripe API operation
+     *              (customer, product/price, subscription, or checkout session creation) and handles subsequent record
+     *              updates or chained callouts. Includes comprehensive error logging for all operations.
+     * @param context QueueableContext provided by the platform
+     */
     public void execute(QueueableContext context){
         // Run Create Customer path
         if (calloutType == CREATE_CUSTOMER) {
@@ -112,7 +150,12 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
             }
         }
     }
-    //Utility method for updating Stripe Customer record with Id from successfull response
+    /**
+     * @description Updates a Stripe_Customer__c record with the Stripe customer ID returned from a successful API callout.
+     *              Enforces object-level and field-level security before performing the update operation.
+     * @param recordId Salesforce ID of the Stripe_Customer__c record to update
+     * @param customerId Stripe customer ID to store in the record
+     */
     private void updateStripeCustomer(Id recordId, String customerId){
         Stripe_Customer__c customer = new Stripe_Customer__c(
             Id = recordId,
@@ -135,6 +178,13 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
             throw new SecurityException('Stripe_Customer__c object is not available for update');
         }
     }
+    /**
+     * @description Updates a Stripe_Subscription__c record with the Stripe subscription ID and synced status after
+     *              successful subscription creation. Enforces object-level and field-level security before performing
+     *              the update operation.
+     * @param recordId Salesforce ID of the Stripe_Subscription__c record to update
+     * @param subscriptionId Stripe subscription ID to store in the record
+     */
     private void updateStripeSubscription(Id recordId, String subscriptionId){
         Stripe_Subscription__c subscription = new Stripe_Subscription__c(
             Id = recordId,
@@ -157,6 +207,13 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
             throw new SecurityException('Stripe_Subscription__c object is not available for update');
         }
     }
+    /**
+     * @description Updates a Stripe_Subscription__c record with checkout session details (session ID, checkout URL, and
+     *              status) after successful session creation. Enforces object-level and field-level security before
+     *              performing the update operation.
+     * @param recordId Salesforce ID of the Stripe_Subscription__c record to update
+     * @param stripeResponse Wrapper object containing session data from Stripe API response
+     */
     private void updateStripeSubscriptionWithSessionData(Id recordId, StripeWrapper stripeResponse){
         Stripe_Subscription__c subscription = new Stripe_Subscription__c(
             Id = recordId,
