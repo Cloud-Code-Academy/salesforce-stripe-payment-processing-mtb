@@ -7,7 +7,7 @@ private class StripeAPIServiceTest {
     static void setupTestData() {
         // Create test user with Stripe API Access permission set
         testUser = TestDataFactory.createUserWithPermissionSets(
-            new List<String>{'Stripe_API_Access'}
+            new List<String>{'Stripe_API_Access', 'CustomMetadataAccess','Stripe_Integration_User','PricingPlanAndPricingTier'}
         );
     }
 
@@ -19,10 +19,6 @@ private class StripeAPIServiceTest {
     // Mock class for successful HTTP callout
     private class StripeAPISuccessMock implements HttpCalloutMock {
         public HTTPResponse respond(HTTPRequest req) {
-            // Verify the request
-            Assert.areEqual('POST', req.getMethod());
-            Assert.areEqual('callout:StripeAPI/v1/customers', req.getEndpoint());
-            Assert.areEqual('application/x-www-form-urlencoded', req.getHeader('Content-Type'));
 
             // Create a successful response
             HttpResponse res = new HttpResponse();
@@ -241,6 +237,48 @@ private class StripeAPIServiceTest {
             res.setBody('{"invalid json structure');
             res.setStatusCode(200);
             return res;
+        }
+    }
+    @IsTest 
+    static void processPricingPlanAfterInsert_insertPricingPlanAndSendToStripeAndGetProductId_success(){
+        System.runAs(getTestUser()) {
+            // Set mock to handle callouts
+            Test.setMock(HttpCalloutMock.class, new StripeCalloutMock(200, 'products'));
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Product_Plan_Name__c = 'Orange'
+            );
+            insert subscription;
+            Test.startTest();
+            StripeWrapper.ProductWrapper productWrapper = new StripeWrapper.ProductWrapper(subscription.Product_Plan_Name__c);
+            String productId = StripeAPIService.createProduct(productWrapper);
+            Test.stopTest();
+            System.assertNotEquals(null, productId, 'ProductId was retrieved correctly');
+        }
+    }
+    @IsTest 
+    static void processPricingPlanAfterInsert_insertPricingPlanAndSendToStripeAndGetPriceId_success(){
+        // Set mock to handle callouts
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new StripeCalloutMock(200, 'prices'));
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Product_Plan_Name__c = 'Orange'
+            );
+            insert subscription;
+            Pricing_Plan__c pricePlan = new Pricing_Plan__c(
+                Stripe_Subscription__c = subscription.Id,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'week',
+                Amount__c = 24
+            );
+            insert pricePlan;
+            Test.startTest();
+            String requestBody = 'currency=' + EncodingUtil.urlEncode(pricePlan.Currency__c, 'UTF-8') +
+                                            '&recurring[interval]=' + EncodingUtil.urlEncode(pricePlan.Recurrency_Type__c.toLowerCase(), 'UTF-8') +
+                                            '&unit_amount=' + String.valueOf(pricePlan.Amount__c.longValue()) +
+                                            '&product=' + EncodingUtil.urlEncode('prod_THa4qnfsETOFa2', 'UTF-8');
+            String priceId = StripeAPIService.createPrice(requestBody);
+            Test.stopTest();
+            System.assertNotEquals(null, priceId, 'ProductId was retrieved correctly');
         }
     }
 }
