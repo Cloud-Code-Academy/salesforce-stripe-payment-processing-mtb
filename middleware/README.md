@@ -10,14 +10,14 @@ Stripe Webhooks → FastAPI Middleware → SQS Queue → Event Processing → Sa
                    Signature                                           OAuth 2.0
                   Verification                                     Token Caching
                       ↓                                                      ↓
-                  Return 200 OK                                          Redis
+                  Return 200 OK                                        DynamoDB
 ```
 
 ### Key Components
 
 - **FastAPI Application**: Async webhook endpoint with signature verification
 - **AWS SQS**: Event buffering and asynchronous processing queue
-- **Redis**: OAuth token caching and temporary storage
+- **DynamoDB**: OAuth token caching and temporary storage
 - **Salesforce OAuth**: Automated token management with refresh
 - **Event Router**: Routes events to appropriate handlers based on type
 - **Handlers**: Process specific event types (customer, subscription, payment)
@@ -26,7 +26,7 @@ Stripe Webhooks → FastAPI Middleware → SQS Queue → Event Processing → Sa
 
 - ✅ **Stripe Webhook Signature Verification** (HMAC-SHA256)
 - ✅ **AWS SQS Integration** for event buffering
-- ✅ **Redis Caching** for OAuth tokens
+- ✅ **DynamoDB Storage** for OAuth tokens and temporary data
 - ✅ **Salesforce OAuth 2.0** with automatic token refresh
 - ✅ **Event Router Pattern** with idempotency
 - ✅ **Structured JSON Logging** with correlation IDs
@@ -34,6 +34,7 @@ Stripe Webhooks → FastAPI Middleware → SQS Queue → Event Processing → Sa
 - ✅ **Health Check Endpoints** for monitoring
 - ✅ **Docker Support** for easy deployment
 - ✅ **Comprehensive Test Suite** with pytest
+- ✅ **CloudWatch Integration** for monitoring and logging
 
 ## Supported Stripe Events
 
@@ -51,8 +52,8 @@ Stripe Webhooks → FastAPI Middleware → SQS Queue → Event Processing → Sa
 
 - Python 3.11+
 - Docker & Docker Compose (for local development)
-- AWS Account (for production deployment)
-- Salesforce Connected App with OAuth enabled
+- AWS Account with Lambda access (for production deployment)
+- Salesforce Connected App with OAuth enabled (use Trailhead Playground)
 - Stripe Account with webhook configured
 
 ## Project Structure
@@ -70,7 +71,7 @@ middleware/
 │   │   ├── stripe_service.py      # Stripe signature verification
 │   │   ├── salesforce_service.py  # Salesforce API client
 │   │   ├── sqs_service.py         # SQS queue operations
-│   │   └── redis_service.py       # Redis cache operations
+│   │   └── dynamodb_service.py    # DynamoDB storage operations
 │   ├── handlers/
 │   │   ├── event_router.py        # Event routing logic
 │   │   ├── customer_handler.py    # Customer event handler
@@ -135,15 +136,15 @@ AWS_ACCESS_KEY_ID=test  # LocalStack
 AWS_SECRET_ACCESS_KEY=test  # LocalStack
 SQS_QUEUE_URL=http://localstack:4566/000000000000/stripe-webhook-events
 
-# Redis
-REDIS_HOST=redis
-REDIS_PORT=6379
+# DynamoDB (use LocalStack for local dev)
+DYNAMODB_TABLE_NAME=stripe-webhook-state
+DYNAMODB_ENDPOINT_URL=http://localstack:4566  # LocalStack
 ```
 
 ### 3. Run with Docker Compose (Recommended)
 
 ```bash
-# Start all services (FastAPI, Redis, LocalStack SQS)
+# Start all services (FastAPI, DynamoDB, LocalStack SQS)
 docker-compose up -d
 
 # View logs
@@ -168,7 +169,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Ensure Redis and SQS are running separately
+# Ensure DynamoDB and SQS are running separately (or use LocalStack)
 
 # Run application
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -178,7 +179,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### 1. Create Connected App
 
-1. In Salesforce Setup, go to **App Manager** → **New Connected App**
+**Note:** Connected Apps do not work in scratch orgs. Use a Trailhead Playground for demo purposes.
+
+1. In Salesforce Setup (Trailhead Playground), go to **App Manager** → **New Connected App**
 2. Configure OAuth settings:
    - Enable OAuth Settings: ✅
    - Callback URL: `https://login.salesforce.com/services/oauth2/callback`
@@ -528,7 +531,7 @@ GET /metrics
   "status": "ready",
   "timestamp": "2024-10-18T12:00:00Z",
   "dependencies": {
-    "redis": {
+    "dynamodb": {
       "status": "healthy",
       "connected": true
     },
@@ -548,37 +551,47 @@ GET /metrics
 
 ## Deployment
 
-### AWS ECS Deployment (Production)
+### AWS Lambda Deployment (Production)
 
-1. **Build and push Docker image:**
+This project uses AWS Lambda for serverless deployment with the Mangum adapter.
+
+1. **Install Mangum adapter:**
 ```bash
-docker build -t salesforce-stripe-middleware:latest --target production .
-docker tag salesforce-stripe-middleware:latest <ecr-repo-url>:latest
-docker push <ecr-repo-url>:latest
+pip install mangum
 ```
 
-2. **Create ECS Task Definition** with:
-   - Container: `<ecr-repo-url>:latest`
-   - CPU: 512, Memory: 1024
-   - Environment variables from AWS Secrets Manager
-   - Health check: `/health`
-
-3. **Create ECS Service** with:
-   - Load balancer targeting port 8000
-   - Auto-scaling based on CPU/memory
-   - CloudWatch logs integration
-
-### AWS Lambda Deployment (Alternative)
-
-Use AWS Lambda with Mangum adapter:
-
+2. **Lambda handler is already configured** in `lambda_handler.py`:
 ```python
-# lambda_handler.py
 from mangum import Mangum
 from app.main import app
 
 handler = Mangum(app)
 ```
+
+3. **Deploy using AWS SAM:**
+```bash
+# Build the application
+sam build
+
+# Deploy to AWS
+sam deploy --guided
+```
+
+4. **Configure Lambda settings:**
+   - Runtime: Python 3.11
+   - Handler: `lambda_handler.handler`
+   - Memory: 512 MB (adjust based on load)
+   - Timeout: 30 seconds
+   - Environment variables from AWS Secrets Manager
+   - Attach IAM role with permissions for SQS, DynamoDB, Secrets Manager
+
+5. **Set up API Gateway:**
+   - Create HTTP API or REST API
+   - Configure POST `/webhook/stripe` route
+   - Enable CloudWatch logging
+   - Note the API Gateway URL for Stripe webhook configuration
+
+See [AWS_LAMBDA_SETUP.md](docs/AWS_LAMBDA_SETUP.md) for detailed deployment instructions.
 
 ## Monitoring and Logging
 
@@ -607,10 +620,9 @@ All logs are JSON-formatted with:
 
 ### Monitoring Integration
 
-- **Coralogix**: Structured log aggregation
-- **CloudWatch**: ECS container logs
-- **Metrics**: Custom metrics via `/metrics` endpoint
-- **Alerts**: Configure on error rates, queue depth
+- **CloudWatch**: Structured log aggregation and Lambda function logs
+- **Metrics**: Custom metrics via `/metrics` endpoint and Lambda metrics
+- **Alerts**: Configure on error rates, queue depth, Lambda errors and throttles
 
 ## Security Best Practices
 
@@ -645,10 +657,10 @@ Error: Authentication failed: invalid_grant
 Solution: Check username, password, security token, and Connected App credentials
 ```
 
-**3. Redis connection error**
+**3. DynamoDB connection error**
 ```
-Error: Redis connection failed
-Solution: Ensure Redis is running and REDIS_HOST/PORT are correct
+Error: DynamoDB connection failed
+Solution: Ensure DynamoDB is running (LocalStack for local) and table exists
 ```
 
 **4. SQS permission denied**
@@ -659,7 +671,7 @@ Solution: Verify AWS credentials have SQS SendMessage permission
 
 ## Performance Optimization
 
-- **Token Caching**: Reduces Salesforce OAuth calls by 90%
+- **Token Caching**: Reduces Salesforce OAuth calls by 90% (DynamoDB)
 - **Async Processing**: Non-blocking I/O for all external calls
 - **SQS Buffering**: Decouples webhook response from processing
 - **Connection Pooling**: Reuses HTTP connections
