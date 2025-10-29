@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.services.redis_service import redis_service
+from app.services.dynamodb_service import dynamodb_service
 from app.services.sqs_service import sqs_service
 from app.auth.salesforce_oauth import salesforce_oauth
 from app.utils.logging_config import get_logger
@@ -47,12 +47,19 @@ async def readiness_check():
     dependencies: Dict[str, Any] = {}
     overall_healthy = True
 
-    # Check Redis
+    # Check DynamoDB
     try:
-        await redis_service.redis_client.ping()
-        dependencies["redis"] = {"status": "healthy", "connected": True}
+        # Test DynamoDB connectivity by checking if connected
+        if not dynamodb_service.is_connected():
+            await dynamodb_service.connect()
+
+        dependencies["dynamodb"] = {
+            "status": "healthy",
+            "connected": dynamodb_service.is_connected(),
+            "table_name": settings.dynamodb_table_name,
+        }
     except Exception as e:
-        dependencies["redis"] = {
+        dependencies["dynamodb"] = {
             "status": "unhealthy",
             "connected": False,
             "error": str(e),
