@@ -63,11 +63,19 @@ This document summarizes the complete FastAPI middleware foundation built for th
 - ✅ Queue attributes and monitoring
 - ✅ Full aioboto3 integration
 
+<<<<<<< HEAD
 #### 8. **DynamoDB Service** ([app/services/dynamodb_service.py](app/services/dynamodb_service.py))
 - ✅ Async DynamoDB connection management
 - ✅ Get/Put/Delete operations with TTL
 - ✅ JSON serialization/deserialization helpers
 - ✅ Item existence checking
+=======
+#### 8. **Redis Service** ([app/services/redis_service.py](app/services/redis_service.py))
+- ✅ Async Redis connection management
+- ✅ Get/Set/Delete operations with TTL
+- ✅ JSON serialization/deserialization helpers
+- ✅ Key existence checking
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - ✅ Counter increment operations
 - ✅ TTL management
 
@@ -77,7 +85,11 @@ This document summarizes the complete FastAPI middleware foundation built for th
 
 #### 9. **Salesforce OAuth** ([app/auth/salesforce_oauth.py](app/auth/salesforce_oauth.py))
 - ✅ OAuth 2.0 password grant flow
+<<<<<<< HEAD
 - ✅ Token caching in DynamoDB (90-minute TTL)
+=======
+- ✅ Token caching in Redis (90-minute TTL)
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - ✅ Automatic token refresh on expiration
 - ✅ Force refresh capability
 - ✅ Token revocation support
@@ -90,7 +102,11 @@ This document summarizes the complete FastAPI middleware foundation built for th
 
 #### 10. **Event Router** ([app/handlers/event_router.py](app/handlers/event_router.py))
 - ✅ Event type-based routing
+<<<<<<< HEAD
 - ✅ Idempotency tracking using DynamoDB
+=======
+- ✅ Idempotency tracking using Redis
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - ✅ Handler registration system
 - ✅ Unsupported event type handling
 - ✅ Duplicate event detection
@@ -170,13 +186,23 @@ This document summarizes the complete FastAPI middleware foundation built for th
   - Health check configuration
 - ✅ Docker Compose ([docker-compose.yml](docker-compose.yml))
   - FastAPI service
+<<<<<<< HEAD
   - LocalStack for DynamoDB and SQS (local dev)
+=======
+  - Redis cache
+  - LocalStack for SQS (local dev)
+  - Redis Commander (optional)
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - ✅ Docker ignore file ([.dockerignore](.dockerignore))
 
 #### 20. **LocalStack Initialization**
 - ✅ SQS queue creation script ([scripts/init-localstack.sh](scripts/init-localstack.sh))
+<<<<<<< HEAD
 - ✅ DynamoDB table creation
 - ✅ Automatic setup on container start
+=======
+- ✅ Automatic queue setup on container start
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 
 ---
 
@@ -187,7 +213,11 @@ This document summarizes the complete FastAPI middleware foundation built for th
 - ✅ Test fixtures ([tests/conftest.py](tests/conftest.py))
   - Mock Stripe events
   - Valid signature generation
+<<<<<<< HEAD
   - Mock services (DynamoDB, SQS, Salesforce)
+=======
+  - Mock services (Redis, SQS, Salesforce)
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - ✅ Webhook endpoint tests ([tests/test_webhook.py](tests/test_webhook.py))
   - Valid signature verification
   - Invalid signature rejection
@@ -280,11 +310,19 @@ This document summarizes the complete FastAPI middleware foundation built for th
 - ✅ 200 OK response within Stripe timeout
 - ✅ Background task processing
 - ✅ Connection pooling
+<<<<<<< HEAD
 - ✅ DynamoDB caching
 - ✅ Non-blocking I/O
 
 ### Observability
 - ✅ Structured JSON logging with CloudWatch integration
+=======
+- ✅ Redis caching
+- ✅ Non-blocking I/O
+
+### Observability
+- ✅ Structured JSON logging
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - ✅ Correlation ID tracing
 - ✅ Health check endpoints
 - ✅ Metrics endpoint
@@ -319,9 +357,15 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed instructions.
 ## 📝 Next Steps (Week 3+)
 
 - [ ] Deploy to AWS ECS or Lambda
+<<<<<<< HEAD
 - [ ] Configure CloudWatch monitoring and alarms
 - [ ] Set up CI/CD pipeline
 - [ ] Implement rate limiting (sliding window with DynamoDB)
+=======
+- [ ] Configure Coralogix monitoring
+- [ ] Set up CI/CD pipeline
+- [ ] Implement rate limiting (sliding window)
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - [ ] Add batch processing for low-priority events
 - [ ] Implement dead letter queue handling
 - [ ] Add performance metrics
@@ -335,7 +379,11 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed instructions.
 - [x] FastAPI webhook endpoint at `/webhook/stripe`
 - [x] Stripe HMAC-SHA256 signature verification
 - [x] AWS SQS integration for event buffering
+<<<<<<< HEAD
 - [x] DynamoDB setup for token caching and storage
+=======
+- [x] Redis setup for token caching
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - [x] Salesforce OAuth 2.0 with automatic refresh
 - [x] Salesforce REST API client wrapper
 
@@ -345,9 +393,15 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed instructions.
 - [x] `services/stripe_service.py` - Signature verification
 - [x] `services/salesforce_service.py` - Salesforce API client
 - [x] `services/sqs_service.py` - SQS operations
+<<<<<<< HEAD
 - [x] `services/dynamodb_service.py` - DynamoDB operations
 - [x] `auth/salesforce_oauth.py` - OAuth management
 - [x] `utils/logging_config.py` - Structured logging (CloudWatch)
+=======
+- [x] `services/redis_service.py` - Redis operations
+- [x] `auth/salesforce_oauth.py` - OAuth management
+- [x] `utils/logging_config.py` - Structured logging
+>>>>>>> de93adeecd1dd1c856b2d7db938572f6dcd483d1
 - [x] `utils/exceptions.py` - Custom exceptions
 
 ### Security & Configuration
