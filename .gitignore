@@ -54,3 +54,6 @@ IlluminatedCloud/
 
 # Profiles
 /force-app/main/default/profiles
+
+# Middleware
+/middleware/.aws-sam
