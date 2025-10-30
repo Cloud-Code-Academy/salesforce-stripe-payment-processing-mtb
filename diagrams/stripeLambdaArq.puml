@@ -1,0 +1,148 @@
+@startuml stripe-salesforce-lambda-architecture
+!theme plain
+skinparam linetype ortho
+skinparam backgroundColor #FEFEFE
+skinparam shadowing false
+
+' Color scheme
+skinparam rectangle {
+    BackgroundColor<<lambda>> #FF9900
+    BorderColor<<lambda>> #232F3E
+    BackgroundColor<<dynamodb>> #527FFF
+    BorderColor<<dynamodb>> #232F3E
+    BackgroundColor<<sqs>> #FF4F8B
+    BorderColor<<sqs>> #232F3E
+    BackgroundColor<<salesforce>> #00A1E0
+    BorderColor<<salesforce>> #032E61
+    BackgroundColor<<stripe>> #635BFF
+    BorderColor<<stripe>> #0A2540
+}
+
+skinparam component {
+    BackgroundColor #FFFFFF
+    BorderColor #232F3E
+}
+
+title AWS Lambda Stripe-Salesforce Integration Architecture\n(Priority-Based Event Processing)
+
+' External services
+rectangle "Stripe API" as Stripe <<stripe>> #635BFF {
+    component "Webhook Events" as WebhookEvents
+}
+
+' AWS Lambda - Main webhook processor
+rectangle "AWS Lambda Function\n(Webhook Event Processor)" as MainLambda <<lambda>> #FF9900 {
+    
+    component "Event Router" as Router {
+        component "Validate Event" as Validate
+        component "Check Idempotency" as Idempotency
+        component "Determine Priority" as Priority
+    }
+    
+    rectangle "Priority Routing" as PriorityRouting {
+        component "🔴 HIGH Priority\nHandler" as HighPriority #FFE5E5
+        component "🟡 MEDIUM Priority\nHandler" as MediumPriority #FFF9E5
+        component "🟢 LOW Priority\nHandler" as LowPriority #E5F9E5
+    }
+}
+
+' DynamoDB for idempotency
+database "DynamoDB\nstripe-event-idempotency" as DynamoDB <<dynamodb>> #527FFF {
+    component "event_id (PK)" as EventIdPK
+    component "processed_at" as ProcessedAt
+    component "ttl (7 days)" as TTL
+}
+
+' SQS Queue for low-priority events
+queue "SQS Queue\nlow-priority-events" as SQSQueue <<sqs>> #FF4F8B {
+    component "Batched Events" as BatchedEvents
+}
+
+' Batch processor Lambda
+rectangle "AWS Lambda Function\n(Batch Processor)" as BatchLambda <<lambda>> #FF9900 {
+    component "SQS Event Source\n(Polls every 5m)" as SQSPoller
+    component "Batch Accumulator\n(up to 200 records)" as BatchAccumulator
+    component "Bulk API Client" as BulkClient
+}
+
+' Salesforce services
+rectangle "Salesforce" as Salesforce <<salesforce>> #00A1E0 {
+    component "REST API\n(Real-time)" as RestAPI
+    component "Bulk API 2.0\n(Batch processing)" as BulkAPI
+}
+
+' Connections - Webhook ingestion
+Stripe -down-> MainLambda : "POST /webhook/stripe\n(Stripe Events)"
+
+' Connections - Event Router flow
+WebhookEvents -down-> Validate
+Validate -down-> Idempotency
+Idempotency -right-> DynamoDB : "Check & Mark\nProcessed"
+Idempotency -down-> Priority
+Priority -down-> PriorityRouting
+
+' Connections - Priority-based routing
+PriorityRouting -down-> HighPriority : "payment_intent.payment_failed\ninvoice.payment_failed\ncustomer.subscription.deleted"
+PriorityRouting -down-> MediumPriority : "payment_intent.succeeded\ninvoice.payment_succeeded\nsubscription.updated"
+PriorityRouting -down-> LowPriority : "customer.updated"
+
+' Connections - High/Medium priority to Salesforce REST API
+HighPriority -down-> RestAPI : "Immediate\nProcessing"
+MediumPriority -down-> RestAPI : "Real-time\nProcessing"
+
+' Connections - Low priority to SQS
+LowPriority -down-> SQSQueue : "Queue for\nBatch Processing"
+
+' Connections - Batch processor flow
+SQSQueue -down-> SQSPoller
+SQSPoller -down-> BatchAccumulator
+BatchAccumulator -down-> BulkClient
+BulkClient -down-> BulkAPI : "Bulk upsert\n(200 records/batch)"
+
+' Notes
+note right of DynamoDB
+  **Idempotency Table**
+  • Prevents duplicate processing
+  • 7-day TTL (auto-cleanup)
+  • ~$0.25/month cost
+  • No VPC required
+end note
+
+note right of SQSQueue
+  **Batch Queue**
+  • Decouples low-priority events
+  • Native Lambda integration
+  • Automatic retry/DLQ
+  • First 1M free, then $0.40/M
+end note
+
+note bottom of HighPriority
+  **Critical Events**
+  • Payment failures
+  • Subscription cancellations
+  • Requires immediate action
+end note
+
+note bottom of MediumPriority
+  **Standard Events**
+  • Successful payments
+  • Subscription updates
+  • Real-time processing
+end note
+
+note bottom of LowPriority
+  **Non-Urgent Events**
+  • Customer metadata updates
+  • Address changes
+  • Batched for efficiency
+end note
+
+note right of BatchLambda
+  **Batch Processing**
+  • Triggered by SQS events
+  • Accumulates up to 200 records
+  • Uses Salesforce Bulk API 2.0
+  • Reduces API call volume by 200x
+end note
+
+@enduml
