@@ -25,7 +25,7 @@ This project emphasizes real-world integration patterns including:
 - **Asynchronous Processing:** Queueable classes for bulk operations, SQS for event queuing
 - **Error Handling:** Comprehensive logging and retry mechanisms with exponential backoff
 - **Rate Limiting:** Sliding window algorithm for Salesforce API rate limiting
-- **Cloud Infrastructure:** AWS services (Lambda/ECS, SQS, DynamoDB) for middleware deployment
+- **Cloud Infrastructure:** AWS services (Lambda, SQS, DynamoDB) for middleware deployment
 
 ---
 
@@ -80,7 +80,7 @@ This project emphasizes real-world integration patterns including:
 - **AWS Infrastructure Configuration:**
   - SQS queue creation for event buffering
   - DynamoDB setup for temporary storage and token caching
-  - Lambda deployment OR ECS container deployment
+  - Lambda deployment configuration
   - IAM roles and security policies
 
 - **Salesforce Connected App & OAuth:**
@@ -415,7 +415,7 @@ The middleware acts as an intermediary between Stripe webhooks and Salesforce, p
 - **Web Framework:** FastAPI (Python)
 - **Event Queue:** AWS SQS for event buffering
 - **Storage Layer:** DynamoDB for token caching and temporary storage
-- **Deployment:** AWS Lambda (serverless) OR AWS ECS (containerized)
+- **Deployment:** AWS Lambda (serverless)
 - **Secrets Management:** AWS Secrets Manager
 - **Monitoring:** CloudWatch
 
@@ -745,9 +745,9 @@ middleware/
 - **pytest:** Testing framework
 
 **Infrastructure:**
-- **AWS Services:** Lambda/ECS, SQS, DynamoDB, Secrets Manager
+- **AWS Services:** Lambda, SQS, DynamoDB, Secrets Manager
 - **Monitoring:** CloudWatch for centralized logging and metrics
-- **Docker:** Containerization for consistent deployment
+- **Docker:** Containerization for local development and testing
 
 ---
 
@@ -849,7 +849,7 @@ middleware/
 - Connection pooling for database and DynamoDB
 - Token caching to minimize OAuth calls
 - Batch processing for non-urgent events
-- Horizontal scaling (multiple Lambda instances or ECS tasks)
+- Horizontal scaling (multiple Lambda instances)
 - SQS visibility timeout tuning
 
 **Scalability Targets:**

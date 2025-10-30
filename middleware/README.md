@@ -52,8 +52,8 @@ Stripe Webhooks → FastAPI Middleware → SQS Queue → Event Processing → Sa
 
 - Python 3.11+
 - Docker & Docker Compose (for local development)
-- AWS Account (for production deployment)
-- Salesforce Connected App with OAuth enabled
+- AWS Account with Lambda access (for production deployment)
+- Salesforce Connected App with OAuth enabled (use Trailhead Playground)
 - Stripe Account with webhook configured
 
 ## Project Structure
@@ -551,37 +551,47 @@ GET /metrics
 
 ## Deployment
 
-### AWS ECS Deployment (Production)
+### AWS Lambda Deployment (Production)
 
-1. **Build and push Docker image:**
+This project uses AWS Lambda for serverless deployment with the Mangum adapter.
+
+1. **Install Mangum adapter:**
 ```bash
-docker build -t salesforce-stripe-middleware:latest --target production .
-docker tag salesforce-stripe-middleware:latest <ecr-repo-url>:latest
-docker push <ecr-repo-url>:latest
+pip install mangum
 ```
 
-2. **Create ECS Task Definition** with:
-   - Container: `<ecr-repo-url>:latest`
-   - CPU: 512, Memory: 1024
-   - Environment variables from AWS Secrets Manager
-   - Health check: `/health`
-
-3. **Create ECS Service** with:
-   - Load balancer targeting port 8000
-   - Auto-scaling based on CPU/memory
-   - CloudWatch logs integration
-
-### AWS Lambda Deployment (Alternative)
-
-Use AWS Lambda with Mangum adapter:
-
+2. **Lambda handler is already configured** in `lambda_handler.py`:
 ```python
-# lambda_handler.py
 from mangum import Mangum
 from app.main import app
 
 handler = Mangum(app)
 ```
+
+3. **Deploy using AWS SAM:**
+```bash
+# Build the application
+sam build
+
+# Deploy to AWS
+sam deploy --guided
+```
+
+4. **Configure Lambda settings:**
+   - Runtime: Python 3.11
+   - Handler: `lambda_handler.handler`
+   - Memory: 512 MB (adjust based on load)
+   - Timeout: 30 seconds
+   - Environment variables from AWS Secrets Manager
+   - Attach IAM role with permissions for SQS, DynamoDB, Secrets Manager
+
+5. **Set up API Gateway:**
+   - Create HTTP API or REST API
+   - Configure POST `/webhook/stripe` route
+   - Enable CloudWatch logging
+   - Note the API Gateway URL for Stripe webhook configuration
+
+See [AWS_LAMBDA_SETUP.md](docs/AWS_LAMBDA_SETUP.md) for detailed deployment instructions.
 
 ## Monitoring and Logging
 
@@ -610,9 +620,9 @@ All logs are JSON-formatted with:
 
 ### Monitoring Integration
 
-- **CloudWatch**: Structured log aggregation and ECS container logs
-- **Metrics**: Custom metrics via `/metrics` endpoint
-- **Alerts**: Configure on error rates, queue depth
+- **CloudWatch**: Structured log aggregation and Lambda function logs
+- **Metrics**: Custom metrics via `/metrics` endpoint and Lambda metrics
+- **Alerts**: Configure on error rates, queue depth, Lambda errors and throttles
 
 ## Security Best Practices
 

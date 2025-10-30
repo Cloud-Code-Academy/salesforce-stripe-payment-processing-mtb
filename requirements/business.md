@@ -122,7 +122,7 @@ Your solution must demonstrate these real-world integration patterns:
    - Create SQS queue for event buffering
    - Set up DynamoDB for token caching and temporary storage
    - Configure AWS Secrets Manager for credential storage
-   - Choose deployment model (Lambda or ECS)
+   - Configure Lambda deployment
    - Set up IAM roles with least privilege access
 
 3. **Salesforce Connected App & OAuth:**
@@ -693,9 +693,9 @@ As you build the integration, you'll need to make these key technical decisions 
 - **Custom Metadata Types:** For configuration management (pricing plans)
 - **Queueable Classes:** For asynchronous processing in Salesforce
 - **FastAPI:** Modern Python web framework for middleware
-- **AWS Services:** SQS, DynamoDB, Secrets Manager, Lambda/ECS
+- **AWS Services:** SQS, DynamoDB, Secrets Manager, Lambda
 - **CloudWatch:** Centralized logging and monitoring
-- **Docker:** For containerization
+- **Docker:** For local development and testing
 
 ---
 
