@@ -2,6 +2,17 @@
 
 FastAPI-based middleware for handling Stripe webhook events and synchronizing data with Salesforce. This service acts as a reliable intermediary between Stripe's webhook system and Salesforce, providing event buffering, signature verification, OAuth authentication, and resilient processing.
 
+## Key Architecture Decisions
+
+This middleware implements the following technology stack:
+
+- **Deployment:** AWS Lambda (serverless) - not using ECS
+- **Storage:** DynamoDB for OAuth token caching and temporary storage - not using Redis
+- **Monitoring:** CloudWatch for centralized logging and metrics - not using Coralogix
+- **Event Handling:** Including `customer.subscription.created` webhook events
+- **Development:** Docker for local development and testing - not using Terraform for IaC
+- **Demo Environment:** Trailhead Playground for final presentation (Connected Apps don't work in scratch orgs)
+
 ## Architecture Overview
 
 ```
@@ -38,15 +49,17 @@ Stripe Webhooks → FastAPI Middleware → SQS Queue → Event Processing → Sa
 
 ## Supported Stripe Events
 
-| Event Type | Salesforce Action |
-|------------|-------------------|
-| `checkout.session.completed` | Update subscription sync status to Completed |
-| `payment_intent.succeeded` | Create Payment_Transaction__c record |
-| `payment_intent.payment_failed` | Create failed transaction record |
-| `customer.subscription.updated` | Update Stripe_Subscription__c status |
-| `customer.subscription.created` | Create Stripe_Subscription__c record |
-| `customer.subscription.deleted` | Update subscription status to canceled |
-| `customer.updated` | Update Stripe_Customer__c record |
+All critical webhook events are supported:
+
+| Event Type | Priority | Salesforce Action |
+|------------|----------|-------------------|
+| `checkout.session.completed` | High | Update subscription sync status to Completed |
+| `customer.subscription.created` | High | Create Stripe_Subscription__c record (newly added) |
+| `customer.subscription.deleted` | High | Update subscription status to canceled |
+| `payment_intent.succeeded` | High | Create Payment_Transaction__c record |
+| `payment_intent.payment_failed` | High | Create failed transaction record |
+| `customer.subscription.updated` | Low | Update Stripe_Subscription__c status (batched) |
+| `customer.updated` | Low | Update Stripe_Customer__c record (batched) |
 
 ## Prerequisites
 
@@ -415,8 +428,8 @@ cp .env.example .env
 
 # 3. Configure with:
 # - SHARED: Same Stripe API keys for all team members
-# - INDIVIDUAL: Own Salesforce scratch org credentials
-# - LOCAL: Own Docker containers (Redis, LocalStack)
+# - INDIVIDUAL: Own Salesforce scratch org credentials (or Trailhead Playground)
+# - LOCAL: Own Docker containers (DynamoDB, LocalStack)
 
 # 4. Start personal instance
 docker-compose up -d
@@ -454,15 +467,16 @@ open https://abc123.ngrok-free.app/docs
 
 ### Model 3: Cloud Deployment (for Final Demo)
 
-Deploy one instance to the cloud for final presentation:
+Deploy one instance to AWS Lambda for final presentation:
 
 ```bash
-# Deploy to Heroku (easiest)
-heroku create salesforce-stripe-team-demo
-heroku config:set STRIPE_API_KEY=sk_test_...
-git push heroku main
+# Deploy to AWS Lambda using SAM
+sam build
+sam deploy --guided
 
-# Everyone uses: https://salesforce-stripe-team-demo.herokuapp.com
+# Everyone uses: https://your-api-gateway-url.amazonaws.com
+
+# Note: Use Trailhead Playground for Salesforce demo (Connected Apps don't work in scratch orgs)
 ```
 
 **When to use:** Week 4 presentation, instructor evaluation
@@ -479,11 +493,12 @@ git push heroku main
 **Week 3 (Integration Testing):**
 - One member runs Ngrok to share instance
 - Team tests integration points together
-- Optional: Quick Heroku deploy for team testing
+- Optional: Deploy to AWS Lambda for team testing
 
 **Week 4 (Demo/Presentation):**
-- Deploy to cloud (Heroku or AWS)
-- Professional public endpoint
+- Deploy to AWS Lambda
+- Set up Trailhead Playground for Salesforce demo (Connected Apps don't work in scratch orgs)
+- Professional public endpoint via API Gateway
 - Use for final demonstration
 
 ## API Endpoints
@@ -632,14 +647,15 @@ All logs are JSON-formatted with:
 - AWS Secrets Manager support for production
 - Non-root Docker user
 - Input validation with Pydantic
-- Secure token caching with TTL
+- Secure token caching with TTL in DynamoDB
+- CloudWatch logging for audit trails
 
 🔒 **Additional Recommendations:**
-- Use AWS Secrets Manager in production
-- Enable VPC for ECS tasks
-- Implement API rate limiting
-- Regular secret rotation
-- Monitor failed authentication attempts
+- Use AWS Secrets Manager in production (configured)
+- Enable VPC for Lambda functions
+- Implement API rate limiting with DynamoDB sliding window
+- Regular secret rotation (90-day policy)
+- Monitor failed authentication attempts via CloudWatch alarms
 
 ## Troubleshooting
 
