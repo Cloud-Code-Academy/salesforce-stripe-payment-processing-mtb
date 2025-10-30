@@ -4,7 +4,7 @@
     <externalId>true</externalId>
     <label>Stripe Price ID</label>
     <length>30</length>
-    <required>true</required>
+    <required>false</required>
     <trackTrending>false</trackTrending>
     <type>Text</type>
     <unique>false</unique>

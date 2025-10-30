@@ -1,1 +1,3 @@
-public class StripeException extends Exception{}
+public class StripeException extends Exception{
+
+}

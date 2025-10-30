@@ -1,0 +1,58 @@
+# AWS SAM Configuration File
+# This file stores default parameters for SAM CLI commands
+
+version = 0.1
+
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "salesforce-stripe-middleware-dev"
+s3_prefix = "salesforce-stripe-middleware"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+resolve_s3 = true
+resolve_image_repos = true
+
+[default.sync]
+[default.sync.parameters]
+stack_name = "salesforce-stripe-middleware-dev"
+region = "us-east-1"
+
+[default.local_invoke]
+[default.local_invoke.parameters]
+region = "us-east-1"
+
+# Development environment configuration
+[development]
+[development.deploy.parameters]
+stack_name = "salesforce-stripe-middleware-dev"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "Environment=development",
+    "LogLevel=DEBUG"
+]
+
+# Staging environment configuration
+[staging]
+[staging.deploy.parameters]
+stack_name = "salesforce-stripe-middleware-staging"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "Environment=staging",
+    "LogLevel=INFO"
+]
+
+# Production environment configuration
+[production]
+[production.deploy.parameters]
+stack_name = "salesforce-stripe-middleware-prod"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "Environment=production",
+    "LogLevel=WARNING"
+]
+confirm_changeset = true  # Require confirmation for production

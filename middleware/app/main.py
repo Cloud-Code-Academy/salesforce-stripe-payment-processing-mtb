@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.routes import health, webhook
-from app.services.redis_service import redis_service
+from app.services.dynamodb_service import dynamodb_service
 from app.utils.exceptions import MiddlewareException
 from app.utils.logging_config import (
     get_logger,
@@ -38,13 +38,13 @@ async def lifespan(app: FastAPI):
         extra={"environment": settings.environment},
     )
 
-    # Initialize Redis connection
+    # Initialize DynamoDB connection
     try:
-        await redis_service.connect()
-        logger.info("Redis connection established")
+        await dynamodb_service.connect()
+        logger.info("DynamoDB connection established")
     except Exception as e:
-        logger.error(f"Failed to connect to Redis: {e}")
-        # Continue anyway - app can run without Redis but with degraded performance
+        logger.error(f"Failed to connect to DynamoDB: {e}")
+        # Continue anyway - app can run without cache but with degraded performance
 
     logger.info("Application startup complete")
 
@@ -53,12 +53,12 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down application...")
 
-    # Close Redis connection
+    # Close DynamoDB connection
     try:
-        await redis_service.disconnect()
-        logger.info("Redis connection closed")
+        await dynamodb_service.disconnect()
+        logger.info("DynamoDB connection closed")
     except Exception as e:
-        logger.warning(f"Error closing Redis connection: {e}")
+        logger.warning(f"Error closing DynamoDB connection: {e}")
 
     logger.info("Application shutdown complete")
 
