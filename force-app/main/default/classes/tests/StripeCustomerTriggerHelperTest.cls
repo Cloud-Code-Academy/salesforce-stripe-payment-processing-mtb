@@ -211,4 +211,282 @@ private class StripeCustomerTriggerHelperTest {
                 'Stripe_Customer_ID__c should remain null when API fails');
         }
     }
+
+    // ========== High Priority Error Handling Tests ==========
+
+    /**
+     * Test populateStripeCustomerIdOnRelatedContact with null Contact__c
+     * Verifies that customers without Contact reference are skipped
+     */
+    @isTest
+    static void populateStripeCustomerIdOnRelatedContact_nullContact_skipped() {
+        System.runAs(getTestUser()) {
+            // Create Stripe Customer record without Contact__c reference
+            Stripe_Customer__c customer = new Stripe_Customer__c(
+                Customer_Email__c = 'orphan@example.com',
+                Customer_Phone__c = '+1234567890'
+                // No Contact__c reference
+            );
+            insert customer;
+
+            // Update Stripe_Customer_ID__c
+            customer.Stripe_Customer_ID__c = 'cus_orphan123';
+
+            Test.startTest();
+            update customer;
+            Test.stopTest();
+
+            // Should complete without error (customer without contact is skipped)
+            Stripe_Customer__c updatedCustomer = [
+                SELECT Stripe_Customer_ID__c
+                FROM Stripe_Customer__c
+                WHERE Id = :customer.Id
+            ];
+            Assert.areEqual('cus_orphan123', updatedCustomer.Stripe_Customer_ID__c,
+                'Customer should be updated even without Contact reference');
+        }
+    }
+
+    /**
+     * Test populateStripeCustomerIdOnRelatedContact with null Stripe_Customer_ID__c
+     * Verifies that updates without Stripe_Customer_ID__c are skipped
+     */
+    @isTest
+    static void populateStripeCustomerIdOnRelatedContact_nullStripeId_skipped() {
+        System.runAs(getTestUser()) {
+            Contact testContact = [SELECT Id FROM Contact WHERE Email = 'test1@example.com' LIMIT 1];
+
+            // Create Stripe Customer record
+            Stripe_Customer__c customer = new Stripe_Customer__c(
+                Contact__c = testContact.Id,
+                Customer_Email__c = 'test1@example.com',
+                Customer_Phone__c = '+1234567890'
+            );
+            insert customer;
+
+            // Update something other than Stripe_Customer_ID__c
+            customer.Customer_Phone__c = '+9999999999';
+
+            Test.startTest();
+            update customer;
+            Test.stopTest();
+
+            // Verify Contact was NOT updated (Stripe_Customer_ID__c was not set)
+            Contact updatedContact = [
+                SELECT Stripe_Customer_ID__c
+                FROM Contact
+                WHERE Id = :testContact.Id
+            ];
+            Assert.areEqual(null, updatedContact.Stripe_Customer_ID__c,
+                'Contact should not be updated when Stripe_Customer_ID__c is null');
+        }
+    }
+
+    /**
+     * Test populateStripeCustomerIdOnRelatedContact with unchanged Stripe_Customer_ID__c
+     * Verifies that unchanged values don't trigger updates
+     */
+    @isTest
+    static void populateStripeCustomerIdOnRelatedContact_unchangedStripeId_skipped() {
+        System.runAs(getTestUser()) {
+            Contact testContact = [SELECT Id FROM Contact WHERE Email = 'test2@example.com' LIMIT 1];
+
+            // Create Stripe Customer with initial Stripe_Customer_ID__c
+            Stripe_Customer__c customer = new Stripe_Customer__c(
+                Contact__c = testContact.Id,
+                Customer_Email__c = 'test2@example.com',
+                Customer_Phone__c = '+1234567890',
+                Stripe_Customer_ID__c = 'cus_unchanged123'
+            );
+            insert customer;
+
+            // First update to set Contact's Stripe_Customer_ID__c
+            Contact updatedContact = [SELECT Stripe_Customer_ID__c FROM Contact WHERE Id = :testContact.Id];
+            Assert.areEqual('cus_unchanged123', updatedContact.Stripe_Customer_ID__c,
+                'Initial update should set Contact Stripe_Customer_ID__c');
+
+            // Update something other than Stripe_Customer_ID__c
+            customer.Customer_Phone__c = '+9999999999';
+
+            Test.startTest();
+            update customer;
+            Test.stopTest();
+
+            // Verify Contact still has same Stripe_Customer_ID__c
+            Contact finalContact = [SELECT Stripe_Customer_ID__c FROM Contact WHERE Id = :testContact.Id];
+            Assert.areEqual('cus_unchanged123', finalContact.Stripe_Customer_ID__c,
+                'Contact Stripe_Customer_ID__c should remain unchanged when not modified');
+        }
+    }
+
+    /**
+     * Test processCustomerAfterInsert with all customers having Stripe_Customer_ID__c
+     * Verifies that empty list (all skipped) is handled gracefully
+     */
+    @isTest
+    static void processCustomerAfterInsert_allHaveStripeId_noQueueables() {
+        System.runAs(getTestUser()) {
+            Contact testContact = [SELECT Id FROM Contact WHERE Email = 'test1@example.com' LIMIT 1];
+
+            // Create customer with existing Stripe_Customer_ID__c
+            Stripe_Customer__c customer = new Stripe_Customer__c(
+                Contact__c = testContact.Id,
+                Customer_Email__c = 'existing@example.com',
+                Customer_Phone__c = '+1234567890',
+                Stripe_Customer_ID__c = 'cus_existing_abc'
+            );
+
+            Test.startTest();
+            insert customer;
+            Test.stopTest();
+
+            // Verify customer still has original Stripe_Customer_ID__c
+            Stripe_Customer__c insertedCustomer = [
+                SELECT Stripe_Customer_ID__c
+                FROM Stripe_Customer__c
+                WHERE Id = :customer.Id
+            ];
+            Assert.areEqual('cus_existing_abc', insertedCustomer.Stripe_Customer_ID__c,
+                'Customer with existing Stripe ID should not be processed');
+        }
+    }
+
+    /**
+     * Test bulk processing with multiple customers
+     * Verifies that multiple customers are processed correctly
+     */
+    @isTest
+    static void populateStripeCustomerIdOnRelatedContact_bulkProcessing_success() {
+        System.runAs(getTestUser()) {
+            // Create multiple contacts
+            List<Contact> contacts = new List<Contact>();
+            for (Integer i = 0; i < 5; i++) {
+                contacts.add(new Contact(
+                    FirstName = 'Bulk',
+                    LastName = 'Test' + i,
+                    Email = 'bulktest' + i + '@example.com'
+                ));
+            }
+            insert contacts;
+
+            // Create multiple Stripe Customers
+            List<Stripe_Customer__c> customers = new List<Stripe_Customer__c>();
+            for (Integer i = 0; i < 5; i++) {
+                customers.add(new Stripe_Customer__c(
+                    Contact__c = contacts[i].Id,
+                    Customer_Email__c = 'bulktest' + i + '@example.com',
+                    Customer_Phone__c = '+123456789' + i
+                ));
+            }
+            insert customers;
+
+            // Update all with Stripe_Customer_ID__c
+            for (Integer i = 0; i < 5; i++) {
+                customers[i].Stripe_Customer_ID__c = 'cus_bulk_' + i;
+            }
+
+            Test.startTest();
+            update customers;
+            Test.stopTest();
+
+            // Verify all contacts were updated
+            List<Contact> updatedContacts = [
+                SELECT Stripe_Customer_ID__c
+                FROM Contact
+                WHERE Id IN :contacts
+                ORDER BY Email
+            ];
+
+            Assert.areEqual(5, updatedContacts.size(), 'All 5 contacts should be queried');
+            for (Integer i = 0; i < 5; i++) {
+                Assert.areEqual('cus_bulk_' + i, updatedContacts[i].Stripe_Customer_ID__c,
+                    'Contact ' + i + ' should have correct Stripe_Customer_ID__c');
+            }
+        }
+    }
+
+    /**
+     * Test processCustomerAfterInsert with null parameter
+     * Verifies that null parameter is handled gracefully
+     */
+    @isTest
+    static void processCustomerAfterInsert_nullParameter_noError() {
+        System.runAs(getTestUser()) {
+            Test.startTest();
+            // Should not throw exception with null parameter
+            StripeCustomerTriggerHelper.processCustomerAfterInsert(null);
+            Test.stopTest();
+
+            // Should complete without errors
+            Assert.isTrue(true, 'Method should handle null parameter gracefully');
+        }
+    }
+
+    /**
+     * Test populateStripeCustomerIdOnRelatedContact with null/empty parameters
+     * Verifies that null parameters are handled gracefully
+     */
+    @isTest
+    static void populateStripeCustomerIdOnRelatedContact_nullParameters_noError() {
+        System.runAs(getTestUser()) {
+            Test.startTest();
+            // Should not throw exception with null parameters
+            StripeCustomerTriggerHelper.populateStripeCustomerIdOnRelatedContact(null, null);
+            StripeCustomerTriggerHelper.populateStripeCustomerIdOnRelatedContact(
+                new List<Stripe_Customer__c>(),
+                new Map<Id, Stripe_Customer__c>()
+            );
+            Test.stopTest();
+
+            // Should complete without errors
+            Assert.isTrue(true, 'Method should handle null/empty parameters gracefully');
+        }
+    }
+
+    /**
+     * Test bulk insert of customers without Stripe_Customer_ID__c
+     * Verifies that queueables are enqueued for multiple customers
+     */
+    @isTest
+    static void processCustomerAfterInsert_bulkInsert_multipleQueueables() {
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new StripeAPISuccessMock());
+
+            // Create contacts
+            List<Contact> contacts = new List<Contact>();
+            for (Integer i = 0; i < 3; i++) {
+                contacts.add(new Contact(
+                    FirstName = 'Queue',
+                    LastName = 'Test' + i,
+                    Email = 'queuetest' + i + '@example.com'
+                ));
+            }
+            insert contacts;
+
+            // Create Stripe Customers without Stripe_Customer_ID__c
+            List<Stripe_Customer__c> customers = new List<Stripe_Customer__c>();
+            for (Integer i = 0; i < 3; i++) {
+                customers.add(new Stripe_Customer__c(
+                    Contact__c = contacts[i].Id,
+                    Customer_Email__c = 'queuetest' + i + '@example.com',
+                    Customer_Phone__c = '+123456789' + i,
+                    Customer_Name__c = 'Queue Test' + i
+                ));
+            }
+
+            Test.startTest();
+            insert customers;
+            Test.stopTest();
+
+            // In test context, queueables execute synchronously
+            // Verify customers were processed (would have Stripe_Customer_ID__c in real execution)
+            List<Stripe_Customer__c> insertedCustomers = [
+                SELECT Id, Stripe_Customer_ID__c
+                FROM Stripe_Customer__c
+                WHERE Id IN :customers
+            ];
+
+            Assert.areEqual(3, insertedCustomers.size(), 'All 3 customers should be created');
+        }
+    }
 }

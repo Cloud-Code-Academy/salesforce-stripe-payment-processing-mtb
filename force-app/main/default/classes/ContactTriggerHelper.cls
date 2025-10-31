@@ -32,13 +32,21 @@ public with sharing class ContactTriggerHelper {
                         continue;
                     }
 
+                    // Skip contacts without email (Customer_Email__c is required on Stripe_Customer__c)
+                    if (String.isBlank(cont.Email)) {
+                        Logger.warn('Skipping Contact without email: ' + cont.Id)
+                            .addTag('ContactTriggerHelper')
+                            .addTag('Missing-Required-Field');
+                        Logger.saveLog();
+                        failureCount++;
+                        continue;
+                    }
+
                     Stripe_Customer__c customer = new Stripe_Customer__c();
                     customer.Contact__c = cont.Id;
 
                     // Map Contact email
-                    if (cont.Email != null) {
-                        customer.Customer_Email__c = cont.Email;
-                    }
+                    customer.Customer_Email__c = cont.Email;
 
                     // Map Contact name
                     if (String.isNotBlank(cont.FirstName)) {

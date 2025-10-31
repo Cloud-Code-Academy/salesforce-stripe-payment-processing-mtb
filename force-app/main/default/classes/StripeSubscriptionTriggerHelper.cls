@@ -16,6 +16,11 @@ public with sharing class StripeSubscriptionTriggerHelper {
      * @param oldMap Map of Stripe_Subscription__c records before the update (Id to old record)
      */
     public static void processStripeSubscriptionAfterUpdate(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
+        // Validate input parameters
+        if (newList == null || newList.isEmpty() || oldMap == null) {
+            return;
+        }
+
         List<Stripe_Subscription__c> subscriptionsForProcess = new List<Stripe_Subscription__c>();
         List<Stripe_Subscription__c> subscriptionsForUpdate = new List<Stripe_Subscription__c>();
 
@@ -80,6 +85,11 @@ public with sharing class StripeSubscriptionTriggerHelper {
      * @param oldMap Map of Stripe_Subscription__c records before the update (Id to old record)
      */
     public static void processStripeSubscriptionToCreateSession(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
+        // Validate input parameters
+        if (newList == null || newList.isEmpty() || oldMap == null) {
+            return;
+        }
+
         List<Stripe_Subscription__c> subscriptionsForProcess = new List<Stripe_Subscription__c>();
         List<Stripe_Subscription__c> subscriptionsForUpdate = new List<Stripe_Subscription__c>();
 
@@ -143,6 +153,11 @@ public with sharing class StripeSubscriptionTriggerHelper {
      * @param oldMap Map of Stripe_Subscription__c records before the update (Id to old record)
      */
     public static void createPricingPlansUponSelection(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
+        // Validate input parameters
+        if (newList == null || newList.isEmpty() || oldMap == null) {
+            return;
+        }
+
         List<Pricing_Plan__c> pricingPlansForInsert = new List<Pricing_Plan__c>();
 
         if (!Schema.SObjectType.Stripe_Subscription__c.isAccessible()) {
@@ -168,13 +183,25 @@ public with sharing class StripeSubscriptionTriggerHelper {
                     continue; // Skip this subscription and continue processing others
                 }
 
-                Pricing_Plan__c pricingPlan = new Pricing_Plan__c(
-                    Name = stripePrice.DeveloperName,
-                    Amount__c = stripePrice.Amount__c,
-                    Currency__c = stripePrice.Currency__c,
-                    Recurrency_Type__c = stripePrice.RecurrencyType__c,
-                    Stripe_Subscription__c = subscription.Id
-                );
+                Pricing_Plan__c pricingPlan = new Pricing_Plan__c();
+
+                // Check field-level security before setting each field
+                if (Schema.SObjectType.Pricing_Plan__c.fields.Name.isCreateable()) {
+                    pricingPlan.Name = stripePrice.DeveloperName;
+                }
+                if (Schema.SObjectType.Pricing_Plan__c.fields.Amount__c.isCreateable()) {
+                    pricingPlan.Amount__c = stripePrice.Amount__c;
+                }
+                if (Schema.SObjectType.Pricing_Plan__c.fields.Currency__c.isCreateable()) {
+                    pricingPlan.Currency__c = stripePrice.Currency__c;
+                }
+                if (Schema.SObjectType.Pricing_Plan__c.fields.Recurrency_Type__c.isCreateable()) {
+                    pricingPlan.Recurrency_Type__c = stripePrice.RecurrencyType__c;
+                }
+                if (Schema.SObjectType.Pricing_Plan__c.fields.Stripe_Subscription__c.isCreateable()) {
+                    pricingPlan.Stripe_Subscription__c = subscription.Id;
+                }
+
                 pricingPlansForInsert.add(pricingPlan);
             }
         }
