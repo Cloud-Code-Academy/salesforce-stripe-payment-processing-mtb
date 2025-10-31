@@ -75,8 +75,13 @@ public with sharing class ContactTriggerHelper {
             if (!stripeCustomersForInsert.isEmpty()) {
                 // Check whether Stripe_Customer__c object is available for Create for User
                 if (Schema.SObjectType.Stripe_Customer__c.isCreateable()) {
-                    insert as user stripeCustomersForInsert;
-                    Logger.info('Successfully created ' + stripeCustomersForInsert.size() + ' Stripe Customer records from ' + newList.size() + ' Contacts')
+                    // Strip inaccessible fields to respect field-level security
+                    SObjectAccessDecision decision = Security.stripInaccessible(
+                        AccessType.CREATABLE,
+                        stripeCustomersForInsert
+                    );
+                    insert decision.getRecords();
+                    Logger.info('Successfully created ' + decision.getRecords().size() + ' Stripe Customer records from ' + newList.size() + ' Contacts')
                         .addTag('ContactTriggerHelper')
                         .addTag('Success');
                     Logger.saveLog();
