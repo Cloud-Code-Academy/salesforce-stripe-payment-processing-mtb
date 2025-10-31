@@ -37,6 +37,7 @@ class StripeSubscriptionData(BaseModel):
         "incomplete",
         "incomplete_expired",
         "past_due",
+        "paused",
         "trialing",
         "unpaid",
     ]
@@ -50,9 +51,49 @@ class StripePaymentIntentData(BaseModel):
     """Stripe payment intent data"""
 
     id: str = Field(description="Payment intent ID")
-    amount: int = Field(description="Amount in cents")
+    object: Optional[str] = Field(None, description="Object type")
+    amount: int = Field(description="Amount in smallest currency unit")
+    amount_capturable: Optional[int] = Field(
+        None, description="Amount that can be captured"
+    )
+    amount_received: Optional[int] = Field(
+        None, description="Amount that was collected"
+    )
+    application: Optional[str] = Field(None, description="Connect application ID")
+    application_fee_amount: Optional[int] = Field(None, description="Application fee")
+    canceled_at: Optional[int] = Field(
+        None, description="Unix timestamp when canceled"
+    )
+    cancellation_reason: Optional[
+        Literal[
+            "abandoned",
+            "automatic",
+            "duplicate",
+            "expired",
+            "failed_invoice",
+            "fraudulent",
+            "requested_by_customer",
+            "void_invoice",
+        ]
+    ] = Field(None, description="Reason for cancellation")
+    capture_method: Optional[Literal["automatic", "automatic_async", "manual"]] = (
+        Field(None, description="When funds will be captured")
+    )
+    client_secret: Optional[str] = Field(None, description="Client secret")
+    confirmation_method: Optional[Literal["automatic", "manual"]] = Field(
+        None, description="Confirmation method"
+    )
+    created: Optional[int] = Field(None, description="Unix timestamp when created")
     currency: str = Field(description="Three-letter ISO currency code")
     customer: Optional[str] = Field(None, description="Customer ID")
+    description: Optional[str] = Field(None, description="Description")
+    invoice: Optional[str] = Field(None, description="Invoice ID")
+    livemode: Optional[bool] = Field(None, description="Live mode flag")
+    payment_method: Optional[str] = Field(None, description="Payment method ID")
+    receipt_email: Optional[str] = Field(None, description="Receipt email")
+    setup_future_usage: Optional[Literal["off_session", "on_session"]] = Field(
+        None, description="Setup for future usage"
+    )
     status: Literal[
         "requires_payment_method",
         "requires_confirmation",
@@ -62,7 +103,6 @@ class StripePaymentIntentData(BaseModel):
         "canceled",
         "succeeded",
     ]
-    payment_method: Optional[str] = Field(None)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -74,7 +114,59 @@ class StripeCheckoutSessionData(BaseModel):
     subscription: Optional[str] = Field(None, description="Subscription ID")
     payment_intent: Optional[str] = Field(None, description="Payment intent ID")
     payment_status: str
-    status: str
+    status: Literal["open", "complete", "expired"]
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StripeInvoiceData(BaseModel):
+    """Stripe invoice data"""
+
+    id: str = Field(description="Invoice ID")
+    object: Optional[str] = Field(None, description="Object type")
+    customer: str = Field(description="Customer ID")
+    subscription: Optional[str] = Field(None, description="Subscription ID")
+    amount_due: int = Field(description="Final amount due")
+    amount_paid: int = Field(description="Amount paid")
+    amount_remaining: int = Field(description="Amount remaining")
+    attempt_count: int = Field(description="Number of payment attempts")
+    attempted: bool = Field(description="Whether payment was attempted")
+    billing_reason: Optional[
+        Literal[
+            "automatic_pending_invoice_item_invoice",
+            "manual",
+            "quote_accept",
+            "subscription",
+            "subscription_create",
+            "subscription_cycle",
+            "subscription_threshold",
+            "subscription_update",
+            "upcoming",
+        ]
+    ] = Field(None, description="Reason invoice was created")
+    collection_method: Literal["charge_automatically", "send_invoice"] = Field(
+        description="Payment collection method"
+    )
+    created: int = Field(description="Unix timestamp when created")
+    currency: str = Field(description="Three-letter ISO currency code")
+    customer_email: Optional[str] = Field(None, description="Customer email")
+    customer_name: Optional[str] = Field(None, description="Customer name")
+    description: Optional[str] = Field(None, description="Invoice description")
+    due_date: Optional[int] = Field(None, description="Unix timestamp when due")
+    hosted_invoice_url: Optional[str] = Field(
+        None, description="URL for hosted invoice page"
+    )
+    invoice_pdf: Optional[str] = Field(None, description="PDF download link")
+    livemode: Optional[bool] = Field(None, description="Live mode flag")
+    number: Optional[str] = Field(None, description="Invoice number")
+    paid: Optional[bool] = Field(None, description="Whether invoice is paid")
+    payment_intent: Optional[str] = Field(None, description="Payment intent ID")
+    period_end: Optional[int] = Field(None, description="Period end timestamp")
+    period_start: Optional[int] = Field(None, description="Period start timestamp")
+    status: Optional[
+        Literal["draft", "open", "paid", "uncollectible", "void"]
+    ] = Field(None, description="Invoice status")
+    subtotal: Optional[int] = Field(None, description="Subtotal amount")
+    total: int = Field(description="Total after discounts and taxes")
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -159,6 +251,24 @@ class SubscriptionDeletedEvent(StripeEvent):
     """customer.subscription.deleted event"""
 
     type: Literal["customer.subscription.deleted"] = "customer.subscription.deleted"
+
+
+class InvoicePaymentSucceededEvent(StripeEvent):
+    """invoice.payment_succeeded event"""
+
+    type: Literal["invoice.payment_succeeded"] = "invoice.payment_succeeded"
+
+
+class InvoicePaymentFailedEvent(StripeEvent):
+    """invoice.payment_failed event"""
+
+    type: Literal["invoice.payment_failed"] = "invoice.payment_failed"
+
+
+class CheckoutSessionExpiredEvent(StripeEvent):
+    """checkout.session.expired event"""
+
+    type: Literal["checkout.session.expired"] = "checkout.session.expired"
 
 
 # Webhook request model
