@@ -12,6 +12,7 @@ This capstone project is a comprehensive payment processing solution that integr
 - **Collaboration:** Required through Slack, virtual meetings, and code reviews
 - **Repository:** All metadata must be stored and versioned in GitHub
 - **Scratch Org Management:** Each team member creates and manages their own scratch orgs from shared source
+- **Demo Environment:** Trailhead Playground used for final project demonstration (Connected Apps do not work in scratch orgs)
 
 ## Technical Architecture Focus
 
@@ -24,7 +25,7 @@ This project emphasizes real-world integration patterns including:
 - **Asynchronous Processing:** Queueable classes for bulk operations, SQS for event queuing
 - **Error Handling:** Comprehensive logging and retry mechanisms with exponential backoff
 - **Rate Limiting:** Sliding window algorithm for Salesforce API rate limiting
-- **Cloud Infrastructure:** AWS services (Lambda/ECS, SQS, Redis) for middleware deployment
+- **Cloud Infrastructure:** AWS services (Lambda, SQS, DynamoDB) for middleware deployment
 
 ---
 
@@ -78,8 +79,8 @@ This project emphasizes real-world integration patterns including:
 
 - **AWS Infrastructure Configuration:**
   - SQS queue creation for event buffering
-  - Redis setup for temporary storage and token caching
-  - Lambda deployment OR ECS container deployment
+  - DynamoDB setup for temporary storage and token caching
+  - Lambda deployment configuration
   - IAM roles and security policies
 
 - **Salesforce Connected App & OAuth:**
@@ -123,6 +124,7 @@ This project emphasizes real-world integration patterns including:
 - **Event Type Implementation:**
   - `customer.updated` - Sync customer data changes to Salesforce
   - `checkout.session.completed` - Update subscription status to active
+  - `customer.subscription.created` - Create new subscription records in Salesforce
   - `payment_intent.succeeded` - Create payment transaction records
   - `payment_intent.failed` - Log failed payments and trigger alerts
   - `customer.subscription.updated` - Sync subscription status changes
@@ -152,12 +154,12 @@ This project emphasizes real-world integration patterns including:
 - Audit trail for all synchronization activities
 
 **Rate Limiting & Throttling:**
-- **Sliding Window Rate Limiter:** Redis-based sliding window algorithm to track API calls per time window
+- **Sliding Window Rate Limiter:** DynamoDB-based sliding window algorithm to track API calls per time window
 - **Exponential Backoff:** For both inbound (Salesforce API) and outbound (Stripe API) retries
 - **Request Throttling:** Queue-based throttling to stay within Salesforce governor limits
 - **Priority-Based Processing:**
   - High-priority events: Processed in real-time via Salesforce REST API
-  - Low-priority events: Batched in Redis and sent via Salesforce Bulk API
+  - Low-priority events: Batched in DynamoDB and sent via Salesforce Bulk API
 - Queue depth monitoring and alerting
 - Circuit breaker pattern for failing endpoints
 
@@ -213,7 +215,7 @@ This project emphasizes real-world integration patterns including:
 **Monitoring & Observability:**
 
 - **Middleware Monitoring:**
-  - Coralogix metrics and alarms
+  - CloudWatch metrics and alarms
   - Error rate tracking
   - Latency monitoring
   - Queue depth alerts
@@ -412,10 +414,10 @@ The middleware acts as an intermediary between Stripe webhooks and Salesforce, p
 **Component Stack:**
 - **Web Framework:** FastAPI (Python)
 - **Event Queue:** AWS SQS for event buffering
-- **Caching Layer:** Redis for token caching and temporary storage
-- **Deployment:** AWS Lambda (serverless) OR AWS ECS (containerized)
+- **Storage Layer:** DynamoDB for token caching and temporary storage
+- **Deployment:** AWS Lambda (serverless)
 - **Secrets Management:** AWS Secrets Manager
-- **Monitoring:** Coralogix
+- **Monitoring:** CloudWatch
 
 **Webhook Endpoint Implementation:**
 
@@ -444,7 +446,7 @@ POST /webhook/stripe
 |------------|---------|-------------------|
 | `customer.updated` | Customer data changed in Stripe | Update Stripe_Customer__c record |
 | `checkout.session.completed` | Customer completed payment | Update Subscription sync status to Completed |
-| `customer.subscription.created` | New subscription created | Create/update Stripe_Subscription__c |
+| `customer.subscription.created` | New subscription created in Stripe | Create/update Stripe_Subscription__c |
 | `customer.subscription.updated` | Subscription modified | Update Stripe_Subscription__c status |
 | `customer.subscription.deleted` | Subscription canceled | Update status to Canceled |
 | `payment_intent.succeeded` | Payment successful | Create Payment_Transaction__c record |
@@ -456,7 +458,7 @@ POST /webhook/stripe
 
 - **OAuth 2.0 Authentication:**
   - Use Connected App with client credentials flow
-  - Cache access tokens in Redis (respect expiration)
+  - Cache access tokens in DynamoDB (respect expiration)
   - Automatic token refresh on expiration
   - Dedicated integration user in Salesforce
 
@@ -473,9 +475,9 @@ POST /webhook/stripe
 - **Conflict Resolution:** Timestamp-based last-write-wins strategy
 - **Priority-Based Processing:**
   - **High-Priority:** Real-time critical events (payment failures, subscription cancellations) → Immediate REST API calls
-  - **Low-Priority:** Non-urgent events (customer updates, metadata changes) → Batched in Redis → Bulk API
+  - **Low-Priority:** Non-urgent events (customer updates, metadata changes) → Batched in DynamoDB → Bulk API
 - **Retry Logic:** Exponential backoff (without jitter) with max retry attempts for both inbound and outbound calls
-- **Sliding Window Rate Limiting:** Redis-based sliding window to track and limit Salesforce API calls within time windows
+- **Sliding Window Rate Limiting:** DynamoDB-based sliding window to track and limit Salesforce API calls within time windows
 
 **Error Handling:**
 
@@ -531,7 +533,7 @@ POST /webhook/stripe
   - Prevent SOQL/SOSL injection
 
 - **Rate Limiting:**
-  - Sliding window algorithm (Redis-based) to track API calls per time window
+  - Sliding window algorithm (DynamoDB-based) to track API calls per time window
   - Respect Salesforce API limits (governor limits)
   - Exponential backoff (without jitter) for retries
   - Priority queue for high vs. low priority events
@@ -557,12 +559,13 @@ POST /webhook/stripe
 
 ### 5. Advanced Features
 
-**Priority-Based Processing with Redis + Bulk API:**
+**Priority-Based Processing with DynamoDB + Bulk API:**
 - **High-Priority Events:** Processed in real-time via Salesforce REST API
   - Payment failures (`payment_intent.payment_failed`)
   - Subscription cancellations (`customer.subscription.deleted`)
   - Checkout completions (`checkout.session.completed`)
-- **Low-Priority Events:** Batched in Redis and sent via Salesforce Bulk API
+  - New subscription creation (`customer.subscription.created`)
+- **Low-Priority Events:** Batched in DynamoDB and sent via Salesforce Bulk API
   - Customer metadata updates (`customer.updated`)
   - Non-critical subscription updates
 - **No Scheduled Reconciliation Needed:** Real-time + bulk processing ensures continuous data sync without daily batch jobs
@@ -578,7 +581,7 @@ POST /webhook/stripe
   - Dead letter queue for permanent failures
 
 **Sliding Window Rate Limiting:**
-- Redis-based sliding window algorithm
+- DynamoDB-based sliding window algorithm
 - Track API calls per minute/hour window
 - Prevent exceeding Salesforce API limits
 - Dynamic throttling based on remaining quota
@@ -615,7 +618,7 @@ POST /webhook/stripe
 - JSON-formatted logs for parsing
 - Correlation IDs for request tracing
 - Log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- Coralogix integration for centralized logging
+- CloudWatch integration for centralized logging
 - Log retention policies
 
 **Monitoring Dashboard:**
@@ -627,7 +630,7 @@ POST /webhook/stripe
 - Sync lag (time between Stripe event and Salesforce update)
 - Error rate by category
 
-**Middleware Metrics (Coralogix):**
+**Middleware Metrics (CloudWatch):**
 - Request count and success rate
 - Response time (p50, p95, p99)
 - Error rate by endpoint and event type
@@ -684,7 +687,7 @@ middleware/
 │   │   ├── stripe_service.py      # Stripe signature verification
 │   │   ├── salesforce_service.py  # Salesforce API client
 │   │   ├── sqs_service.py         # SQS queue operations
-│   │   ├── redis_service.py       # Redis cache operations
+│   │   ├── dynamodb_service.py    # DynamoDB storage operations
 │   │   └── rate_limiter.py        # Sliding window rate limiter
 │   ├── handlers/
 │   │   ├── __init__.py
@@ -727,6 +730,7 @@ middleware/
 - **Scratch Org Lifecycle:** 7-30 day lifespan, recreate as needed from source
 - **Version Control:** All metadata in GitHub, scratch orgs created from source
 - **Dev Hub:** Required for scratch org creation (enable in production or Developer Edition org)
+- **Demo Environment:** Use Trailhead Playground for final project demonstration (Connected Apps do not work in scratch orgs)
 
 ### Recommended Tools
 
@@ -737,15 +741,13 @@ middleware/
 - **FastAPI:** Modern Python web framework with automatic API documentation
 - **Pydantic:** Data validation using Python type hints
 - **httpx:** Async HTTP client for API calls
-- **boto3:** AWS SDK for Python (SQS, Secrets Manager)
-- **redis-py:** Redis client for caching
+- **boto3:** AWS SDK for Python (SQS, DynamoDB, Secrets Manager)
 - **pytest:** Testing framework
 
 **Infrastructure:**
-- **AWS Services:** Lambda/ECS, SQS, Redis (ElastiCache), Secrets Manager
-- **Monitoring:** Coralogix for centralized logging and metrics
-- **Docker:** Containerization for consistent deployment
-- **Terraform (Optional):** Infrastructure as code
+- **AWS Services:** Lambda, SQS, DynamoDB, Secrets Manager
+- **Monitoring:** CloudWatch for centralized logging and metrics
+- **Docker:** Containerization for local development and testing
 
 ---
 
@@ -844,10 +846,10 @@ middleware/
 
 **Middleware Optimization:**
 - Async request handling (FastAPI async/await)
-- Connection pooling for database and Redis
+- Connection pooling for database and DynamoDB
 - Token caching to minimize OAuth calls
 - Batch processing for non-urgent events
-- Horizontal scaling (multiple Lambda instances or ECS tasks)
+- Horizontal scaling (multiple Lambda instances)
 - SQS visibility timeout tuning
 
 **Scalability Targets:**
@@ -878,8 +880,8 @@ middleware/
 3. **Middleware Deployment:**
    - Deployed and accessible middleware service
    - Webhook URL registered with Stripe
-   - Monitoring dashboards configured in Coralogix
-   - Logs accessible via Coralogix
+   - Monitoring dashboards configured in CloudWatch
+   - Logs accessible via CloudWatch
 
 4. **Documentation Package:**
    - Setup guide for developers
