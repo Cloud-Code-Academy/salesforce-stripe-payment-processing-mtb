@@ -31,7 +31,8 @@ public class StripeFinalCalloutQueueable implements Queueable, Database.AllowsCa
     public void execute(QueueableContext context){
         if (calloutType == ATTACH_PAYMENT) {
             try {
-                String attachedPaymentMethod = StripeAPIService.attachPaymentMethod(defaultMethodId, customerId);
+                String attachedPaymentMethod = StripeAPIService.attachPaymentMethod(defaultMethodId, 
+                                                                                    customerId);
             } catch (Exception ex) {
                 Logger.error('Failed to get subscriptionId/update Stripe Subscription record: ', ex);
                 Logger.saveLog();
