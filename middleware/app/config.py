@@ -71,6 +71,7 @@ class Settings(BaseSettings):
 
     # SQS
     sqs_queue_url: str = Field(description="SQS queue URL for webhook events")
+    low_priority_queue_url: str = Field(description="SQS queue URL for low-priority events (Bulk API)")
     sqs_queue_name: str = Field(default="stripe-webhook-events")
     sqs_visibility_timeout: int = Field(default=300)
     sqs_max_messages: int = Field(default=10)

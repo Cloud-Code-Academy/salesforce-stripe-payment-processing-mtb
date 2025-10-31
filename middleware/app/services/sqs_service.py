@@ -27,12 +27,14 @@ class SQSService:
             region_name=settings.aws_region,
         )
         self.queue_url = settings.sqs_queue_url
+        self.low_priority_queue_url = settings.low_priority_queue_url
 
     async def send_message(
         self,
         message_body: Dict[str, Any],
         message_attributes: Optional[Dict[str, Any]] = None,
         delay_seconds: int = 0,
+        queue_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Send a message to SQS queue.
@@ -41,6 +43,7 @@ class SQSService:
             message_body: Message body as dictionary (will be JSON serialized)
             message_attributes: Optional message attributes
             delay_seconds: Delay before message becomes available (0-900)
+            queue_url: Optional specific queue URL (defaults to main queue)
 
         Returns:
             SQS response with MessageId
@@ -48,6 +51,8 @@ class SQSService:
         Raises:
             QueueException: If send fails
         """
+        target_queue_url = queue_url or self.queue_url
+
         try:
             async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
                 # Serialize message body to JSON
@@ -63,7 +68,7 @@ class SQSService:
                         }
 
                 response = await sqs.send_message(
-                    QueueUrl=self.queue_url,
+                    QueueUrl=target_queue_url,
                     MessageBody=body,
                     MessageAttributes=attributes,
                     DelaySeconds=delay_seconds,
@@ -74,7 +79,7 @@ class SQSService:
                     f"Message sent to SQS successfully",
                     extra={
                         "message_id": message_id,
-                        "queue_url": self.queue_url,
+                        "queue_url": target_queue_url,
                     },
                 )
 
@@ -84,7 +89,7 @@ class SQSService:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             logger.error(
                 f"Failed to send message to SQS: {error_code}",
-                extra={"error": str(e), "queue_url": self.queue_url},
+                extra={"error": str(e), "queue_url": target_queue_url},
             )
             raise QueueException(
                 f"Failed to send message to queue: {error_code}",

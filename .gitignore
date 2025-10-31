@@ -57,3 +57,7 @@ IlluminatedCloud/
 
 # Middleware
 /middleware/.aws-sam
+
+# Tests
+/middleware/tests 
+/diagrams

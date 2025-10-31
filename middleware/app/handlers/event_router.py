@@ -405,8 +405,8 @@ class EventRouter:
         try:
             # Send event to low-priority SQS queue
             message_id = await self.sqs.send_message(
-                queue_name="low-priority-events",
-                message_body=json.dumps(event),
+                message_body=event,
+                queue_url=self.sqs.low_priority_queue_url,
                 message_attributes={
                     "event_type": event_type,
                     "event_id": event_id,

@@ -201,16 +201,46 @@ WEBHOOK_URL=$(aws cloudformation describe-stacks \
     --query 'Stacks[0].Outputs[?OutputKey==`WebhookUrl`].OutputValue' \
     --output text)
 
+WEBHOOK_FUNCTION_ARN=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`WebhookFunctionArn`].OutputValue' \
+    --output text)
+
+SQS_WORKER_FUNCTION_ARN=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`SqsWorkerFunctionArn`].OutputValue' \
+    --output text)
+
+BULK_PROCESSOR_FUNCTION_ARN=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`BulkProcessorFunctionArn`].OutputValue' \
+    --output text)
+
 QUEUE_URL=$(aws cloudformation describe-stacks \
     --stack-name ${STACK_NAME} \
     --region ${AWS_REGION} \
     --query 'Stacks[0].Outputs[?OutputKey==`QueueUrl`].OutputValue' \
     --output text)
 
+LOW_PRIORITY_QUEUE_URL=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`LowPriorityQueueUrl`].OutputValue' \
+    --output text)
+
 DLQ_URL=$(aws cloudformation describe-stacks \
     --stack-name ${STACK_NAME} \
     --region ${AWS_REGION} \
     --query 'Stacks[0].Outputs[?OutputKey==`DlqUrl`].OutputValue' \
+    --output text)
+
+BATCH_ACCUMULATOR_TABLE=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`BatchAccumulatorTableName`].OutputValue' \
     --output text)
 
 # Display summary
@@ -222,14 +252,21 @@ print_success "Stack Name: ${STACK_NAME}"
 print_success "Region: ${AWS_REGION}"
 print_success "Environment: ${ENVIRONMENT}"
 echo ""
-print_info "Webhook URL (configure in Stripe):"
+print_info "🔗 Webhook URL (configure in Stripe):"
 echo "  ${WEBHOOK_URL}"
 echo ""
-print_info "SQS Queue URL:"
-echo "  ${QUEUE_URL}"
+print_info "⚡ Lambda Functions (3-tier architecture):"
+echo "  Webhook Receiver:  ${WEBHOOK_FUNCTION_ARN##*/}"
+echo "  SQS Worker:        ${SQS_WORKER_FUNCTION_ARN##*/}"
+echo "  Bulk Processor:    ${BULK_PROCESSOR_FUNCTION_ARN##*/}"
 echo ""
-print_info "Dead Letter Queue URL:"
-echo "  ${DLQ_URL}"
+print_info "📬 SQS Queues:"
+echo "  Main Queue (HIGH/MEDIUM):     ${QUEUE_URL##*/}"
+echo "  Low-Priority Queue (BULK):    ${LOW_PRIORITY_QUEUE_URL##*/}"
+echo "  Dead Letter Queue:            ${DLQ_URL##*/}"
+echo ""
+print_info "💾 DynamoDB Tables:"
+echo "  Batch Accumulator: ${BATCH_ACCUMULATOR_TABLE}"
 echo ""
 
 # Next steps
@@ -237,23 +274,35 @@ echo "╔═══════════════════════�
 echo "║                        Next Steps                              ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
-echo "1. Configure Stripe Webhook:"
+echo "1. Deploy CloudWatch Dashboard (recommended):"
+echo "   ./scripts/deploy-dashboard.sh ${STACK_NAME} ${AWS_REGION}"
+echo ""
+echo "2. Configure Stripe Webhook:"
 echo "   - Go to: https://dashboard.stripe.com/webhooks"
 echo "   - Click 'Add endpoint'"
 echo "   - Endpoint URL: ${WEBHOOK_URL}"
 echo "   - Select events: checkout.session.completed, payment_intent.succeeded, etc."
 echo ""
-echo "2. Test the webhook:"
+echo "3. Test the webhook:"
 echo "   stripe trigger payment_intent.succeeded"
 echo ""
-echo "3. Monitor logs:"
+echo "4. Monitor Lambda logs (all 3 functions):"
 echo "   sam logs --stack-name ${STACK_NAME} --tail"
 echo ""
-echo "4. View CloudWatch logs:"
-echo "   https://console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}#logsV2:log-groups"
+echo "5. View CloudWatch Dashboard:"
+echo "   https://console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}#dashboards:name=${STACK_NAME}"
 echo ""
-echo "5. Check SQS queue:"
+echo "6. Check health endpoint:"
+echo "   curl ${WEBHOOK_URL%/webhook/stripe}/health/ready"
+echo ""
+echo "7. View SQS queues:"
 echo "   https://console.aws.amazon.com/sqs/v2/home?region=${AWS_REGION}"
+echo ""
+echo "📊 Architecture Summary:"
+echo "   • Webhook Receiver → Signature verification, priority routing"
+echo "   • SQS Worker → HIGH/MEDIUM priority (REST API)"
+echo "   • Bulk Processor → LOW priority (Bulk API 2.0, sliding window)"
+echo "   • 13 CloudWatch Alarms → Comprehensive monitoring"
 echo ""
 
 print_success "Deployment complete! 🚀"
