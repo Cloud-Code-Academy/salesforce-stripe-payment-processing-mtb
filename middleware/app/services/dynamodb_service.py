@@ -11,7 +11,7 @@ DynamoDB is serverless, auto-scaling, and often free tier eligible.
 
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 import boto3
@@ -119,7 +119,7 @@ class DynamoDBService:
                 value_type = "string"
 
             # Prepare item
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             item = {
                 "pk": pk,
                 "value": stored_value,
@@ -267,7 +267,7 @@ class DynamoDBService:
 
         try:
             pk = f"{namespace}#{key}"
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Prepare update expression
             update_expr = "SET #value = if_not_exists(#value, :zero) + :inc, updated_at = :now"
@@ -372,7 +372,7 @@ class DynamoDBService:
                 pk = f"{namespace}#{key}"
                 sk = f"{score}#{member}"  # Sort key: score + member
 
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 item = {
                     "pk": pk,
                     "sk": sk,
@@ -434,6 +434,84 @@ class DynamoDBService:
         except ClientError as e:
             logger.error(f"Failed to count sorted set {key}: {e}")
             return 0
+        except Exception as e:
+            logger.error(f"Unexpected error counting sorted set {key}: {e}")
+            return 0
+
+    async def query_items(
+        self,
+        table_name: str,
+        key_condition_expression: str,
+        expression_attribute_names: Optional[Dict[str, str]] = None,
+        expression_attribute_values: Optional[Dict[str, Any]] = None,
+        scan_index_forward: bool = True,
+        limit: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Query items from DynamoDB table using partition and sort keys.
+
+        Supports efficient range queries on sort keys, which is critical for
+        the sliding window rate limiter (queries timestamp ranges).
+
+        Args:
+            table_name: DynamoDB table name
+            key_condition_expression: Key condition (e.g., "pk = :pk AND sk >= :start")
+            expression_attribute_names: Name substitutions for reserved words
+            expression_attribute_values: Value bindings for expression
+            scan_index_forward: True for ascending, False for descending sort order
+            limit: Maximum number of items to return
+
+        Returns:
+            Dictionary containing:
+                - Items: List of matching items
+                - Count: Number of items returned
+                - ScannedCount: Number of items evaluated
+                - LastEvaluatedKey: Pagination token (if applicable)
+
+        Example:
+            >>> result = await dynamodb.query_items(
+            ...     table_name="rate-limit-per-second",
+            ...     key_condition_expression="resource_id = :id AND #ts >= :start",
+            ...     expression_attribute_names={"#ts": "timestamp"},
+            ...     expression_attribute_values={
+            ...         ":id": "salesforce_api",
+            ...         ":start": 1698796800000
+            ...     }
+            ... )
+            >>> print(len(result["Items"]))
+            5
+        """
+        try:
+            query_params = {
+                "TableName": table_name,
+                "KeyConditionExpression": key_condition_expression,
+                "ScanIndexForward": scan_index_forward
+            }
+
+            if expression_attribute_names:
+                query_params["ExpressionAttributeNames"] = expression_attribute_names
+
+            if expression_attribute_values:
+                query_params["ExpressionAttributeValues"] = expression_attribute_values
+
+            if limit:
+                query_params["Limit"] = limit
+
+            response = await self.client.query(**query_params)
+
+            return {
+                "Items": response.get("Items", []),
+                "Count": response.get("Count", 0),
+                "ScannedCount": response.get("ScannedCount", 0),
+                "LastEvaluatedKey": response.get("LastEvaluatedKey")
+            }
+
+        except Exception as e:
+            logger.error(
+                f"DynamoDB query failed for table {table_name}: {str(e)}",
+                exc_info=True
+            )
+            raise
 
 
 # Singleton instance

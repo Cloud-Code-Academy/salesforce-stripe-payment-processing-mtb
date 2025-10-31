@@ -169,6 +169,81 @@ Resources:
         - Key: Purpose
           Value: Token caching and temporary storage
 
+  # Rate Limit Table - Per Second
+  RateLimitPerSecondTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-second
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Purpose
+          Value: RateLimiting
+        - Key: Tier
+          Value: PerSecond
+
+  # Rate Limit Table - Per Minute
+  RateLimitPerMinuteTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-minute
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Purpose
+          Value: RateLimiting
+        - Key: Tier
+          Value: PerMinute
+
+  # Rate Limit Table - Per Day
+  RateLimitPerDayTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-day
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Purpose
+          Value: RateLimiting
+        - Key: Tier
+          Value: PerDay
+
   # ==========================================
   # LAMBDA FUNCTION - Webhook Receiver
   # ==========================================

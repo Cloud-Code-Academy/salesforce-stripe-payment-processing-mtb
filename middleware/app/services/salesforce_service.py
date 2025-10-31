@@ -16,7 +16,8 @@ from app.models.salesforce_records import (
     SalesforcePaymentTransaction,
     SalesforceSubscription,
 )
-from app.utils.exceptions import SalesforceAPIException, SalesforceAuthException
+from app.services.rate_limiter import get_rate_limiter
+from app.utils.exceptions import RateLimitException, SalesforceAPIException, SalesforceAuthException
 from app.utils.logging_config import get_logger
 from app.utils.retry import retry_async
 
@@ -24,12 +25,17 @@ logger = get_logger(__name__)
 
 
 class SalesforceService:
-    """Salesforce REST API client"""
-
+    """
+    Service for interacting with Salesforce REST API.
+    
+    Includes rate limiting to prevent API limit violations.
+    """
+    
     def __init__(self):
         self.http_client = httpx.AsyncClient(timeout=30.0)
         self.api_version = settings.salesforce_api_version
-
+        self.rate_limiter = get_rate_limiter()
+    
     async def _get_api_url(self, endpoint: str = "") -> str:
         """
         Get full API URL with instance URL.
@@ -108,6 +114,118 @@ class SalesforceService:
                     url=url,
                     headers=headers,
                     json=json_data,
+                    params=params,
+                )
+
+            # Check for errors
+            if response.status_code >= 400:
+                error_data = {}
+                try:
+                    error_data = response.json()
+                except Exception:
+                    error_data = {"message": response.text}
+
+                logger.error(
+                    f"Salesforce API error: {response.status_code}",
+                    extra={
+                        "status_code": response.status_code,
+                        "endpoint": endpoint,
+                        "error": error_data,
+                    },
+                )
+
+                raise SalesforceAPIException(
+                    f"Salesforce API error: {error_data}",
+                    status_code=response.status_code,
+                    details={"error": error_data, "endpoint": endpoint},
+                )
+
+            # Return JSON response for successful requests
+            if response.status_code != 204:  # No Content
+                return response.json()
+
+            return None
+
+        except httpx.RequestError as e:
+            logger.error(f"Network error calling Salesforce API: {e}")
+            raise SalesforceAPIException(
+                f"Network error: {e}",
+                details={"error": str(e), "endpoint": endpoint},
+            ) from e
+
+    async def _make_api_call(
+        self,
+        method: str,
+        endpoint: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Make rate-limited API call to Salesforce.
+        
+        Acquires rate limit permission before making the call. If rate limit
+        is exceeded, raises RateLimitException with retry_after duration.
+        
+        Args:
+            method: HTTP method (GET, POST, PATCH, DELETE)
+            endpoint: API endpoint path (e.g., '/sobjects/Account')
+            data: Request body data for POST/PATCH
+            params: Query parameters for GET
+            
+        Returns:
+            API response as dictionary
+            
+        Raises:
+            RateLimitException: If rate limit is exceeded
+            SalesforceAPIException: If API call fails
+        """
+        # Acquire rate limit permission
+        try:
+            rate_limit_result = await self.rate_limiter.acquire()
+            
+            logger.debug(
+                "Rate limit acquired for Salesforce API call",
+                extra={
+                    "current_usage": rate_limit_result["current_usage"],
+                    "limits": rate_limit_result["limits"]
+                }
+            )
+            
+        except RateLimitException as e:
+            logger.warning(
+                f"Rate limit exceeded: {e.tier}",
+                extra={
+                    "tier": e.tier,
+                    "retry_after": e.retry_after,
+                    "current_usage": e.current_usage
+                }
+            )
+            raise
+        
+        # Make the actual API call
+        try:
+            url = await self._get_api_url(endpoint)
+            headers = await self._get_headers()
+
+            response = await self.http_client.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=data,
+                params=params,
+            )
+
+            # Handle authentication errors
+            if response.status_code == 401:
+                logger.warning("Access token expired, refreshing...")
+                # Force token refresh and retry once
+                await salesforce_oauth.get_access_token(force_refresh=True)
+                headers = await self._get_headers()
+                response = await self.http_client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=data,
                     params=params,
                 )
 

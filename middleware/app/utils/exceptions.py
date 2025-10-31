@@ -137,3 +137,64 @@ class RetryableException(MiddlewareException):
     def should_retry(self) -> bool:
         """Check if operation should be retried"""
         return self.details.get("retry_count", 0) < self.details.get("max_retries", 5)
+
+class RateLimitException(MiddlewareException):
+    """
+    Exception raised when rate limit is exceeded.
+    
+    Contains detailed information about the rate limit violation including
+    which tier was exceeded, current usage, and how long to wait.
+    
+    Attributes:
+        message: Human-readable error message
+        tier: Name of the rate limit tier that was exceeded
+        current_usage: Current call counts across all tiers
+        limits: Configured limits for all tiers
+        retry_after: Seconds to wait before retrying
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        tier: str,
+        current_usage: Dict[str, int],
+        limits: Dict[str, int],
+        retry_after: int
+    ):
+        """
+        Initialize rate limit exception.
+        
+        Args:
+            message: Error message describing the rate limit violation
+            tier: Name of exceeded tier (e.g., 'per_second', 'per_day')
+            current_usage: Current call counts per tier
+            limits: Configured limits per tier
+            retry_after: Seconds to wait before retrying
+        """
+        super().__init__(message)
+        self.tier = tier
+        self.current_usage = current_usage
+        self.limits = limits
+        self.retry_after = retry_after
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert exception to dictionary for API responses.
+        
+        Returns:
+            Dictionary with error details suitable for HTTP response
+            
+        Example:
+            >>> try:
+            ...     await api_call()
+            ... except RateLimitException as e:
+            ...     return JSONResponse(e.to_dict(), status_code=429)
+        """
+        return {
+            "error": "rate_limit_exceeded",
+            "message": str(self),
+            "tier": self.tier,
+            "current_usage": self.current_usage,
+            "limits": self.limits,
+            "retry_after": self.retry_after
+        }
