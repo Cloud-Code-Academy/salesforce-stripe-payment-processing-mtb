@@ -58,17 +58,18 @@ LOW_PRIORITY_EVENTS = {
 EVENT_HANDLERS = {
     # Customer events
     "customer.updated": customer_handler.handle_customer_updated,
-    
+
     # Subscription lifecycle events
     "customer.subscription.created": subscription_handler.handle_subscription_created,
     "customer.subscription.updated": subscription_handler.handle_subscription_updated,
     "customer.subscription.deleted": subscription_handler.handle_subscription_deleted,
     "checkout.session.completed": subscription_handler.handle_checkout_completed,
-    
+    "checkout.session.expired": subscription_handler.handle_checkout_expired,
+
     # One-time payment events
     "payment_intent.succeeded": payment_handler.handle_payment_succeeded,
     "payment_intent.payment_failed": payment_handler.handle_payment_failed,
-    
+
     # Recurring payment (invoice) events
     "invoice.payment_succeeded": payment_handler.handle_invoice_payment_succeeded,
     "invoice.payment_failed": payment_handler.handle_invoice_payment_failed,

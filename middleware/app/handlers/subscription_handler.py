@@ -73,6 +73,59 @@ class SubscriptionHandler:
             "timestamp": datetime.utcnow().isoformat(),
         }
 
+    async def handle_checkout_expired(self, event: StripeEvent) -> Dict[str, Any]:
+        """
+        Handle checkout.session.expired event.
+        Updates subscription status to Failed/Expired in Salesforce.
+
+        Args:
+            event: Stripe webhook event
+
+        Returns:
+            Processing result
+        """
+        session_data = event.event_object
+
+        logger.warning(
+            f"Processing checkout.session.expired event",
+            extra={
+                "event_id": event.id,
+                "session_id": session_data.get("id"),
+                "subscription_id": session_data.get("subscription"),
+            },
+        )
+
+        subscription_id = session_data.get("subscription")
+
+        # Update subscription sync status to Failed in Salesforce
+        salesforce_subscription = SalesforceSubscription(
+            Stripe_Checkout_Session_ID__c=session_data.get("id"),
+            Sync_Status__c="Failed",
+            Error_Message__c=f"Checkout session expired without completion. Session ID: {session_data.get('id')}",
+        )
+
+        # If we have a subscription ID, link it
+        if subscription_id:
+            salesforce_subscription.Stripe_Subscription_ID__c = subscription_id
+
+        result = await salesforce_service.upsert_subscription(salesforce_subscription)
+
+        logger.warning(
+            f"Checkout session expired - subscription marked as failed",
+            extra={
+                "subscription_id": subscription_id,
+                "session_id": session_data.get("id"),
+            },
+        )
+
+        return {
+            "subscription_id": subscription_id,
+            "session_id": session_data.get("id"),
+            "status": "expired",
+            "salesforce_result": result,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
     async def handle_subscription_created(self, event: StripeEvent) -> Dict[str, Any]:
         """
         Handle customer.subscription.created event.
