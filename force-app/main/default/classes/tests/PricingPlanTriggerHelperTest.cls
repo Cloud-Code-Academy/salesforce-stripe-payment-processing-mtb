@@ -113,6 +113,206 @@ public class PricingPlanTriggerHelperTest {
             System.assertNotEquals(null, createdPricingTiers[0].Discount__c, 'Discount__c is populated');
             System.assertNotEquals(null, createdPricingTiers[0].Unit_Price__c, 'Unit_Price__c is populated');
         }
-        
+
+    }
+
+    /**
+     * @description Tests that multiple pricing plans referencing the same subscription
+     *              don't cause a System.ListException: Duplicate id in list error.
+     *              Verifies that the Map-based approach correctly handles duplicates
+     *              and updates the subscription only once.
+     */
+    @IsTest
+    static void updateStripePriceIdOnRelatedSubscription_multiplePlansReferenceSameSubscription_noDuplicateError(){
+        User testUser = getTestUser();
+        System.runAs(testUser){
+            // Create one subscription that will be referenced by multiple pricing plans
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Product_Plan_Name__c = 'Shared Subscription',
+                Stripe_Price_ID__c = 'price_initial_123'
+            );
+            insert subscription;
+
+            // Create three pricing plans that all reference the same subscription
+            List<Pricing_Plan__c> pricingPlans = new List<Pricing_Plan__c>{
+                new Pricing_Plan__c(
+                    Stripe_Subscription__c = subscription.Id,
+                    Stripe_Price_ID__c = 'price_plan_A_111',
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month',
+                    Amount__c = 100
+                ),
+                new Pricing_Plan__c(
+                    Stripe_Subscription__c = subscription.Id,
+                    Stripe_Price_ID__c = 'price_plan_B_222',
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month',
+                    Amount__c = 200
+                ),
+                new Pricing_Plan__c(
+                    Stripe_Subscription__c = subscription.Id,
+                    Stripe_Price_ID__c = 'price_plan_C_333',
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month',
+                    Amount__c = 300
+                )
+            };
+            insert pricingPlans;
+
+            // Update all pricing plans' Stripe_Price_ID__c to trigger the helper method
+            pricingPlans[0].Stripe_Price_ID__c = 'price_updated_A_999';
+            pricingPlans[1].Stripe_Price_ID__c = 'price_updated_B_888';
+            pricingPlans[2].Stripe_Price_ID__c = 'price_updated_C_777';
+
+            Test.startTest();
+            // This should NOT throw System.ListException: Duplicate id in list
+            update pricingPlans;
+            Test.stopTest();
+
+            // Verify the subscription was updated (only once, with the last value from the map)
+            Stripe_Subscription__c updatedSubscription = [
+                SELECT Stripe_Price_ID__c
+                FROM Stripe_Subscription__c
+                WHERE Id = :subscription.Id
+            ];
+
+            // The subscription should have one of the updated price IDs (last-write-wins behavior)
+            System.assert(
+                updatedSubscription.Stripe_Price_ID__c == 'price_updated_A_999' ||
+                updatedSubscription.Stripe_Price_ID__c == 'price_updated_B_888' ||
+                updatedSubscription.Stripe_Price_ID__c == 'price_updated_C_777',
+                'Subscription Stripe_Price_ID__c should be updated to one of the pricing plan values'
+            );
+
+            // Most importantly: No exception should have been thrown
+            System.assertNotEquals(
+                'price_initial_123',
+                updatedSubscription.Stripe_Price_ID__c,
+                'Subscription Stripe_Price_ID__c should have been updated from initial value'
+            );
+        }
+    }
+
+    /**
+     * @description Tests that multiple pricing plans referencing the same subscription
+     *              don't cause a System.ListException: Duplicate id in list error when updating amounts.
+     *              Verifies that the Map-based approach correctly handles duplicates
+     *              and updates the subscription amount only once.
+     */
+    @IsTest
+    static void updateAmountOnRelatedSubscription_multiplePlansReferenceSameSubscription_noDuplicateError(){
+        User testUser = getTestUser();
+        System.runAs(testUser){
+            // Create one subscription that will be referenced by multiple pricing plans
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Product_Plan_Name__c = 'Shared Subscription',
+                Amount__c = 50
+            );
+            insert subscription;
+
+            // Create three pricing plans that all reference the same subscription
+            List<Pricing_Plan__c> pricingPlans = new List<Pricing_Plan__c>{
+                new Pricing_Plan__c(
+                    Stripe_Subscription__c = subscription.Id,
+                    Stripe_Price_ID__c = 'price_plan_A',
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month',
+                    Amount__c = 100
+                ),
+                new Pricing_Plan__c(
+                    Stripe_Subscription__c = subscription.Id,
+                    Stripe_Price_ID__c = 'price_plan_B',
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month',
+                    Amount__c = 200
+                ),
+                new Pricing_Plan__c(
+                    Stripe_Subscription__c = subscription.Id,
+                    Stripe_Price_ID__c = 'price_plan_C',
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month',
+                    Amount__c = 300
+                )
+            };
+            insert pricingPlans;
+
+            // Update all pricing plans' amounts to trigger the helper method
+            pricingPlans[0].Amount__c = 150;
+            pricingPlans[1].Amount__c = 250;
+            pricingPlans[2].Amount__c = 350;
+
+            Test.startTest();
+            // This should NOT throw System.ListException: Duplicate id in list
+            update pricingPlans;
+            Test.stopTest();
+
+            // Verify the subscription amount was updated (only once, with the last value from the map)
+            Stripe_Subscription__c updatedSubscription = [
+                SELECT Amount__c
+                FROM Stripe_Subscription__c
+                WHERE Id = :subscription.Id
+            ];
+
+            // The subscription should have one of the updated amounts (last-write-wins behavior)
+            System.assert(
+                updatedSubscription.Amount__c == 150 ||
+                updatedSubscription.Amount__c == 250 ||
+                updatedSubscription.Amount__c == 350,
+                'Subscription Amount__c should be updated to one of the pricing plan amounts'
+            );
+
+            // Most importantly: No exception should have been thrown
+            System.assertNotEquals(
+                50,
+                updatedSubscription.Amount__c,
+                'Subscription Amount__c should have been updated from initial value'
+            );
+        }
+    }
+
+    /**
+     * @description Tests edge case where a single pricing plan is updated normally
+     *              to ensure the Map-based approach doesn't break single-record updates.
+     */
+    @IsTest
+    static void updateStripePriceIdOnRelatedSubscription_singlePlanUpdate_success(){
+        User testUser = getTestUser();
+        System.runAs(testUser){
+            // Create subscription and single pricing plan
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Product_Plan_Name__c = 'Single Plan Subscription',
+                Stripe_Price_ID__c = 'price_initial'
+            );
+            insert subscription;
+
+            Pricing_Plan__c pricePlan = new Pricing_Plan__c(
+                Stripe_Subscription__c = subscription.Id,
+                Stripe_Price_ID__c = 'price_original',
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month',
+                Amount__c = 100
+            );
+            insert pricePlan;
+
+            // Update the pricing plan's price ID
+            pricePlan.Stripe_Price_ID__c = 'price_updated_single';
+
+            Test.startTest();
+            update pricePlan;
+            Test.stopTest();
+
+            // Verify the subscription was updated correctly
+            Stripe_Subscription__c updatedSubscription = [
+                SELECT Stripe_Price_ID__c
+                FROM Stripe_Subscription__c
+                WHERE Id = :subscription.Id
+            ];
+
+            System.assertEquals(
+                'price_updated_single',
+                updatedSubscription.Stripe_Price_ID__c,
+                'Single pricing plan update should work correctly with Map approach'
+            );
+        }
     }
 }

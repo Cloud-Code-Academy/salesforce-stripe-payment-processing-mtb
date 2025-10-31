@@ -3,7 +3,7 @@
  *              from Stripe error responses including error type, code, HTTP status, and additional
  *              metadata to enable proper error handling and user messaging.
  */
-public class StripeException extends Exception {
+public virtual class StripeException extends Exception {
     // The Stripe error type (e.g., 'card_error', 'invalid_request_error', 'api_error', 'idempotency_error')
     public String errorType { get; private set; }
 
@@ -29,22 +29,11 @@ public class StripeException extends Exception {
     public StripeWrapper.ErrorResponse errorResponse { get; private set; }
 
     /**
-     * @description Default constructor that creates an exception with a message.
-     * @param message The error message
+     * @description Note: This class intentionally does not define custom constructors.
+     *              All exceptions should be created using the inherited Exception constructors
+     *              (e.g., Exception(String)) or via the fromHttpResponse() factory method.
+     *              Additional fields are populated after construction by fromHttpResponse().
      */
-    public StripeException(String message) {
-        super(message);
-    }
-
-    /**
-     * @description Constructor that creates an exception with message and HTTP status code.
-     * @param message The error message
-     * @param statusCode The HTTP status code from the response
-     */
-    public StripeException(String message, Integer statusCode) {
-        super(message);
-        this.httpStatusCode = statusCode;
-    }
 
     /**
      * @description Factory method to create a StripeException from an HTTP response.
@@ -164,8 +153,8 @@ public class StripeException extends Exception {
             }
         }
 
-        // Default to base StripeException
-        return new StripeException(message, statusCode);
+        // Default to base StripeException (statusCode will be set by fromHttpResponse)
+        return new StripeException(message);
     }
 
     /**
