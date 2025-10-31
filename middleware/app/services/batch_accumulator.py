@@ -27,6 +27,9 @@ from app.utils.exceptions import CacheException
 logger = get_logger(__name__)
 settings = get_settings()
 
+# Fixed sort key for active batch (since we only have one active batch per type)
+ACTIVE_BATCH_SK = "active"
+
 
 class BatchType(Enum):
     """Types of batches for different object types"""
@@ -47,9 +50,10 @@ class BatchAccumulator:
     ```
     Table: batch-accumulator
     PK: batch_type (e.g., "customer_update")
-    SK: window_id (e.g., "2024-11-15T10:30:00Z")
+    SK: "active" (fixed value for currently accumulating batch)
 
     Attributes:
+    - window_id: ISO timestamp (when window started)
     - events: List[Dict] - Accumulated events
     - created_at: ISO timestamp
     - window_start: ISO timestamp
@@ -96,7 +100,7 @@ class BatchAccumulator:
         """
         batch_type_str = batch_type.value
         current_window = await self._get_or_create_window(batch_type_str)
-        window_id = current_window["window_id"]
+        window_id = current_window.get("window_id", current_window["created_at"])
 
         logger.debug(
             f"Adding event to batch: {batch_type_str}",
@@ -110,7 +114,8 @@ class BatchAccumulator:
             # Add event to batch
             batch_item = {
                 "pk": batch_type_str,
-                "sk": window_id,
+                "sk": ACTIVE_BATCH_SK,  # Fixed sk for active batch
+                "window_id": window_id,  # Store window_id as attribute
                 "events": current_window.get("events", []) + [event],
                 "created_at": current_window["created_at"],
                 "window_start": current_window["window_start"],
@@ -186,7 +191,7 @@ class BatchAccumulator:
         try:
             batch_item = await self.dynamodb.get_item(
                 table_name=self.table_name,
-                key={"pk": batch_type_str}
+                key={"pk": batch_type_str, "sk": ACTIVE_BATCH_SK}
             )
 
             if not batch_item:
@@ -222,14 +227,14 @@ class BatchAccumulator:
                 f"Batch ready for submission",
                 extra={
                     "batch_type": batch_type_str,
-                    "batch_id": batch_item["sk"],
+                    "batch_id": batch_item.get("window_id", batch_item["sk"]),
                     "record_count": record_count,
                     "window_age_seconds": window_age
                 }
             )
 
             return {
-                "batch_id": batch_item["sk"],
+                "batch_id": batch_item.get("window_id", batch_item["sk"]),
                 "batch_type": batch_type_str,
                 "events": batch_item.get("events", []),
                 "record_count": record_count,
@@ -260,7 +265,7 @@ class BatchAccumulator:
             # Delete old batch (implicitly starts new window on next add_event)
             await self.dynamodb.delete_item(
                 table_name=self.table_name,
-                key={"pk": batch_type_str}
+                key={"pk": batch_type_str, "sk": ACTIVE_BATCH_SK}
             )
 
             logger.info(
@@ -287,7 +292,7 @@ class BatchAccumulator:
         try:
             existing_batch = await self.dynamodb.get_item(
                 table_name=self.table_name,
-                key={"pk": batch_type_str}
+                key={"pk": batch_type_str, "sk": ACTIVE_BATCH_SK}
             )
 
             if existing_batch:
@@ -299,7 +304,8 @@ class BatchAccumulator:
 
             return {
                 "pk": batch_type_str,
-                "sk": window_id,
+                "sk": ACTIVE_BATCH_SK,
+                "window_id": window_id,
                 "created_at": now,
                 "window_start": now,
                 "events": [],
