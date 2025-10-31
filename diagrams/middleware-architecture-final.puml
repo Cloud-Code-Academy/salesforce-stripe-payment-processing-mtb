@@ -1,0 +1,190 @@
+@startuml Middleware System Architecture - Final (3-Lambda with Bulk API)
+
+title Stripe-Salesforce Middleware - Final Architecture with Priority-Based Routing
+
+skinparam linetype ortho
+skinparam nodesep 150
+skinparam ranksep 120
+skinparam packagePadding 20
+skinparam minClassWidth 150
+skinparam componentSpacing 50
+
+!define LIGHTBLUE #ADD8E6
+!define LIGHTGREEN #90EE90
+!define LIGHTORANGE #FFD580
+!define LIGHTYELLOW #FFFACD
+!define LIGHTPURPLE #E6E6FA
+!define LIGHTRED #FFB6C1
+
+' === STRIPE (TOP LEFT) ===
+package "Stripe" LIGHTBLUE {
+    component [Webhook\nEvents] as stripe
+}
+
+' === AWS API GATEWAY ===
+package "AWS API Gateway" LIGHTORANGE {
+    component [HTTP API\n/webhook/stripe] as apigw
+}
+
+' === LAMBDA 1: WEBHOOK RECEIVER ===
+package "Lambda 1: Webhook Receiver" LIGHTGREEN {
+    component [FastAPI App] as fastapi
+    component [Signature\nVerification] as verify
+    component [Event\nRouter] as router
+}
+
+' === AWS SQS QUEUES ===
+package "AWS SQS" LIGHTYELLOW {
+    queue "Main Event Queue\n(HIGH/MEDIUM)" as main_queue #lightgreen
+    queue "Low-Priority Queue\n(LOW - Bulk API)" as low_queue #lightblue
+    queue "Dead Letter Queue\n(Failed Events)" as dlq #lightcoral
+}
+
+' === LAMBDA 2: SQS WORKER ===
+package "Lambda 2: SQS Worker" LIGHTGREEN {
+    component [Event\nProcessor] as processor
+    component [Payment\nHandler] as payment_handler
+    component [Customer\nHandler] as customer_handler
+    component [Subscription\nHandler] as subscription_handler
+    component [REST API\nClient] as rest_client
+}
+
+' === LAMBDA 3: BULK PROCESSOR ===
+package "Lambda 3: Bulk Processor" LIGHTPURPLE {
+    component [Batch\nAccumulator] as batch
+    component [CSV\nTransformer] as csv
+    component [Bulk API\nClient] as bulk_client
+}
+
+' === AWS DYNAMODB ===
+package "AWS DynamoDB" LIGHTORANGE {
+    database "Cache Table\n(OAuth Tokens)" as dynamodb_cache
+    database "Idempotency\nTracking" as dynamodb_idem
+    database "Rate Limit\nCounters" as dynamodb_rate
+}
+
+' === SALESFORCE (BOTTOM) ===
+package "Salesforce" LIGHTBLUE {
+    component [REST API v63.0\n(Real-time)] as sf_rest
+    component [Bulk API 2.0\n(Batch)] as sf_bulk
+
+    database "Stripe_Customer__c" as customer_obj
+    database "Stripe_Subscription__c" as subscription_obj
+    database "Payment_Transaction__c" as payment_obj
+}
+
+' === AWS SECRETS MANAGER ===
+cloud "AWS Secrets Manager" as secrets {
+    storage "Stripe API Key" as secret_stripe
+    storage "Salesforce OAuth" as secret_sf
+}
+
+' ============================================
+' FLOW 1: WEBHOOK INGESTION
+' ============================================
+
+stripe -right-> apigw : **1.** POST webhook\n(payment_intent.succeeded,\ncustomer.updated, etc.)
+
+apigw -down-> fastapi : **2.** Lambda invocation
+
+fastapi -down-> verify : **3.** Verify HMAC-SHA256\nsignature
+
+verify -down-> router : **4.** Route by priority
+
+' ============================================
+' FLOW 2A: HIGH/MEDIUM PRIORITY (REST API)
+' ============================================
+
+router -right-> main_queue : **5a.** HIGH/MEDIUM\npayment_intent.succeeded,\ninvoice.payment_failed,\nsubscription events
+note right on link
+  Priority: HIGH or MEDIUM
+  Route to REST API
+end note
+
+main_queue -down-> processor : **6.** Poll (batch of 5)\nwith long polling
+
+processor -down-> payment_handler : **7a.** Payment events
+processor -down-> customer_handler : **7b.** Customer events
+processor -down-> subscription_handler : **7c.** Subscription events
+
+payment_handler -down-> rest_client : **8.** Process event
+customer_handler -down-> rest_client : **8.** Process event
+subscription_handler -down-> rest_client : **8.** Process event
+
+rest_client -down-> sf_rest : **9.** REST API Call\n(Upsert with\nexternal ID)
+
+' ============================================
+' FLOW 2B: LOW PRIORITY (BULK API)
+' ============================================
+
+router -left-> low_queue : **5b.** LOW\ncustomer.updated\n(metadata changes)
+note left on link
+  Priority: LOW
+  Route to Bulk API
+end note
+
+low_queue -down-> batch : **10.** Poll (batch of 10)\nwait up to 30s
+
+batch -down-> csv : **11.** Transform to CSV
+
+csv -down-> bulk_client : **12.** Submit bulk job
+
+bulk_client -down-> sf_bulk : **13.** Bulk API 2.0\n(Upsert job)
+
+' ============================================
+' SALESFORCE DATA FLOW
+' ============================================
+
+sf_rest -down-> customer_obj : Create/Update
+sf_rest -down-> subscription_obj : Create/Update
+sf_rest -down-> payment_obj : Create/Update
+
+sf_bulk -down-> customer_obj : Batch Update
+
+' ============================================
+' SUPPORTING CONNECTIONS
+' ============================================
+
+' DynamoDB connections
+router .right.> dynamodb_idem : Check duplicate\nevents (7-day TTL)
+rest_client .left.> dynamodb_cache : OAuth token cache
+rest_client .left.> dynamodb_rate : Rate limit check\n(10/sec, 250/min, 15k/day)
+bulk_client .right.> dynamodb_cache : OAuth token cache
+
+' Secrets Manager
+fastapi .up.> secrets : Webhook secret
+rest_client .up.> secrets : SF credentials
+bulk_client .up.> secrets : SF credentials
+
+' Dead Letter Queue
+main_queue -[#red]down-> dlq : Failed after\n5 retries
+low_queue -[#red]down-> dlq : Failed after\n3 retries
+
+' ============================================
+' LEGEND
+' ============================================
+
+legend right
+  |<#lightgreen>| **Lambda Functions** |
+  |<#lightyellow>| **SQS Queues** |
+  |<#lightorange>| **AWS Services** |
+  |<#lightblue>| **Salesforce** |
+  |<#E6E6FA>| **Bulk Processor** |
+
+  **Event Priorities:**
+  • **HIGH**: payment/invoice failures, cancellations
+  • **MEDIUM**: successful payments, subscriptions
+  • **LOW**: customer metadata updates
+
+  **Processing Methods:**
+  • **REST API**: Real-time (< 5s for HIGH, < 30s for MEDIUM)
+  • **Bulk API 2.0**: Batched (< 60s accumulation + processing)
+
+  **Benefits:**
+  • 90% reduction in API calls for customer updates
+  • Critical events never blocked by batch processing
+  • Automatic retry with DLQ for failures
+  • Idempotency prevents duplicate processing
+end legend
+
+@enduml
