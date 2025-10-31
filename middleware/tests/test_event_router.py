@@ -7,7 +7,7 @@ Tests event routing logic and idempotency.
 import pytest
 from unittest.mock import patch, AsyncMock
 
-from app.handlers.event_router import event_router
+from app.handlers.event_router import get_event_router
 from app.models.stripe_events import StripeEvent
 
 
@@ -18,6 +18,7 @@ async def test_route_customer_updated_event(
     """Test routing customer.updated event"""
 
     event = StripeEvent(**mock_stripe_customer_event)
+    event_router = get_event_router()
 
     with patch("app.handlers.event_router.redis_service", mock_redis_service), patch(
         "app.handlers.customer_handler.salesforce_service", mock_salesforce_service
@@ -41,6 +42,7 @@ async def test_route_subscription_updated_event(
     """Test routing customer.subscription.updated event"""
 
     event = StripeEvent(**mock_stripe_subscription_event)
+    event_router = get_event_router()
 
     with patch("app.handlers.event_router.redis_service", mock_redis_service), patch(
         "app.handlers.subscription_handler.salesforce_service", mock_salesforce_service
@@ -63,6 +65,7 @@ async def test_route_payment_succeeded_event(
     """Test routing payment_intent.succeeded event"""
 
     event = StripeEvent(**mock_stripe_payment_succeeded_event)
+    event_router = get_event_router()
 
     with patch("app.handlers.event_router.redis_service", mock_redis_service), patch(
         "app.handlers.payment_handler.salesforce_service", mock_salesforce_service
@@ -83,6 +86,7 @@ async def test_idempotency_check(mock_stripe_customer_event, mock_redis_service)
     """Test that duplicate events are not processed"""
 
     event = StripeEvent(**mock_stripe_customer_event)
+    event_router = get_event_router()
 
     with patch("app.handlers.event_router.redis_service", mock_redis_service):
         # Simulate event already processed
@@ -108,6 +112,7 @@ async def test_unsupported_event_type(mock_redis_service):
     }
 
     event = StripeEvent(**unsupported_event)
+    event_router = get_event_router()
 
     with patch("app.handlers.event_router.redis_service", mock_redis_service):
         mock_redis_service.exists.return_value = False

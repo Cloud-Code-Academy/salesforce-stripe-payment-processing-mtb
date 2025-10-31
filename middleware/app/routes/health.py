@@ -113,12 +113,20 @@ async def readiness_check():
     try:
         # Create temporary client to check low-priority queue
         import aioboto3
-        session = aioboto3.Session(
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            region_name=settings.aws_region,
-        )
-        async with session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs_client:
+        # In Lambda, always use default credential chain (IAM role)
+        if settings.is_lambda:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        elif settings.aws_access_key_id and settings.aws_secret_access_key and settings.aws_access_key_id != "test":
+            session = aioboto3.Session(
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+                region_name=settings.aws_region,
+            )
+        else:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        # Only use endpoint_url for local development (LocalStack), not in Lambda
+        endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+        async with session.client("sqs", endpoint_url=endpoint_url) as sqs_client:
             low_priority_attributes = await sqs_client.get_queue_attributes(
                 QueueUrl=sqs_service.low_priority_queue_url,
                 AttributeNames=["ApproximateNumberOfMessages"],
@@ -223,12 +231,20 @@ async def metrics():
 
         # Get Low-Priority SQS queue metrics
         import aioboto3
-        session = aioboto3.Session(
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            region_name=settings.aws_region,
-        )
-        async with session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs_client:
+        # In Lambda, always use default credential chain (IAM role)
+        if settings.is_lambda:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        elif settings.aws_access_key_id and settings.aws_secret_access_key and settings.aws_access_key_id != "test":
+            session = aioboto3.Session(
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+                region_name=settings.aws_region,
+            )
+        else:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        # Only use endpoint_url for local development (LocalStack), not in Lambda
+        endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+        async with session.client("sqs", endpoint_url=endpoint_url) as sqs_client:
             low_priority_attributes = await sqs_client.get_queue_attributes(
                 QueueUrl=sqs_service.low_priority_queue_url,
                 AttributeNames=["All"],

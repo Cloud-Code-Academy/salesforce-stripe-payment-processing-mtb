@@ -8,7 +8,7 @@ SQS queuing, and immediate 200 OK response.
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from app.handlers.event_router import event_router
+from app.handlers.event_router import get_event_router
 from app.services.stripe_service import stripe_service
 from app.services.sqs_service import sqs_service
 from app.utils.exceptions import StripeSignatureException, StripeException
@@ -137,6 +137,7 @@ async def process_event_background(stripe_event):
             return
 
         # Route event to appropriate handler
+        event_router = get_event_router()
         result = await event_router.route_event(stripe_event)
 
         logger.info(

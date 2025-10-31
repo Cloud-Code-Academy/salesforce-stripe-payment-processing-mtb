@@ -108,19 +108,31 @@ class SalesforceOAuth:
             SalesforceAuthException: If authentication fails
         """
         try:
-            # Prepare OAuth request data
-            data = {
-                "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
-            }
+            # Check which authentication method to use based on available credentials
+            if self.username and self.password:
+                # Use password flow (username-password flow)
+                # Note: Salesforce requires password + security token concatenated
+                data = {
+                    "grant_type": "password",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "username": self.username,
+                    "password": self.password  # This should be password + security_token
+                }
+            else:
+                # Fall back to client credentials (requires special setup in Salesforce)
+                data = {
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret
+                }
 
             logger.info(
                 "Authenticating with Salesforce",
                 extra={
                     "token_url": self.token_url,
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
+                    "client_id": self.client_id[:10] + "..." if self.client_id else None,
+                    "grant_type": data.get("grant_type"),
                 },
             )
 
@@ -231,18 +243,18 @@ class SalesforceOAuth:
             ttl = 5400  # 90 minutes
 
             # Store token
-            await dynamodb_service.set(OAUTH_TOKEN_KEY, access_token, namespace=OAUTH_NAMESPACE, ttl=ttl)
+            await dynamodb_service.set(OAUTH_TOKEN_KEY, access_token, ttl_seconds=ttl, namespace=OAUTH_NAMESPACE)
 
             # Store instance URL
-            await dynamodb_service.set(OAUTH_INSTANCE_URL_KEY, instance_url, namespace=OAUTH_NAMESPACE, ttl=ttl)
+            await dynamodb_service.set(OAUTH_INSTANCE_URL_KEY, instance_url, ttl_seconds=ttl, namespace=OAUTH_NAMESPACE)
 
             # Store expiry timestamp
             expiry = datetime.utcnow() + timedelta(seconds=ttl)
             await dynamodb_service.set(
                 OAUTH_TOKEN_EXPIRY_KEY,
                 expiry.isoformat(),
+                ttl_seconds=ttl,
                 namespace=OAUTH_NAMESPACE,
-                ttl=ttl,
             )
 
             logger.info(

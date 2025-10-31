@@ -61,7 +61,8 @@ class BatchAccumulator:
     def __init__(self):
         """Initialize batch accumulator"""
         self.dynamodb = dynamodb_service
-        self.table_name = "stripe-event-batches"
+        # Use environment variable for table name, fallback to legacy name for backward compatibility
+        self.table_name = settings.batch_accumulator_table_name if hasattr(settings, 'batch_accumulator_table_name') else "stripe-event-batches"
         self.size_threshold = 200  # Submit when reaching 200 records
         self.time_threshold = 30  # Submit if window open > 30 seconds
 

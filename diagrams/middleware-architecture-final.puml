@@ -1,5 +1,6 @@
 @startuml Middleware System Architecture - Final (3-Lambda with Bulk API)
-
+skinparam dpi 300
+scale 0.4
 title Stripe-Salesforce Middleware - Final Architecture with Priority-Based Routing
 
 skinparam linetype ortho

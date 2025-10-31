@@ -19,8 +19,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings with validation"""
 
+    # Only load .env file if NOT running in Lambda environment
+    # Lambda should use IAM roles and environment variables, not .env files
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=".env" if not os.getenv("AWS_LAMBDA_FUNCTION_NAME") else None,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -79,6 +81,7 @@ class Settings(BaseSettings):
 
     # DynamoDB (replaces Redis for token caching)
     dynamodb_table_name: str = Field(default="salesforce-stripe-cache")
+    batch_accumulator_table_name: str = Field(default="stripe-event-batches", description="Table for batch accumulation")
     dynamodb_token_ttl: int = Field(
         default=3600, description="Token TTL in seconds (1 hour)"
     )
