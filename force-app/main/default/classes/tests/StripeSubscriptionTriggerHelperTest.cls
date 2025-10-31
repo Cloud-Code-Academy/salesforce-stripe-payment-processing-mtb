@@ -1,25 +1,32 @@
 @IsTest
 public class StripeSubscriptionTriggerHelperTest {
+    // Mock response payloads
+    private static final String SUBSCRIPTION_RESPONSE = '{"id": "sub_1SL0dlF3hNTtzVuGK5JQfCji", "object": "subscription", "application": null, "application_fee_percent": null}';
+    private static final String SESSION_RESPONSE = '{"id": "cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM", "object": "checkout.session", "url": "https://checkout.stripe.com/c/pay/cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0Vk03R1BDNm1LUXF%2FU3BCSWBxV2hyVEgzQF89YEB9YklSbmluNnxSa3c9N3REYU93c1R9NnRwUTR1V2lyPGx1ampNcGNvalIyMWN8TExValEyTGtXQ1xGNTVwXFYzX3R%2FNCcpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8ndmxrYmlgWmxxYGgnKSdga2RnaWBVaWRmYG1qaWFgd3YnP3F3cGB4JSUl"}';
+    
     private static User testUser;
+    
     // Mock class for successful Stripe API callout
     private class StripeAPISubscriptionSuccessMock implements HttpCalloutMock {
         public HTTPResponse respond(HTTPRequest req) {
             HttpResponse res = new HttpResponse();
             res.setHeader('Content-Type', 'application/json');
-            res.setBody('{"id": "sub_1SL0dlF3hNTtzVuGK5JQfCji", "object": "subscription", "application": null, "application_fee_percent": null}');
+            res.setBody(SUBSCRIPTION_RESPONSE);
             res.setStatusCode(200);
             return res;
         }
     }
+    
     private class StripeAPISessionSuccessMock implements HttpCalloutMock {
         public HTTPResponse respond(HTTPRequest req) {
             HttpResponse res = new HttpResponse();
             res.setHeader('Content-Type', 'application/json');
-            res.setBody('{"id": "cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM", "object": "checkout.session", "url": "https://checkout.stripe.com/c/pay/cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0Vk03R1BDNm1LUXF%2FU3BCSWBxV2hyVEgzQF89YEB9YklSbmluNnxSa3c9N3REYU93c1R9NnRwUTR1V2lyPGx1ampNcGNvalIyMWN8TExValEyTGtXQ1xGNTVwXFYzX3R%2FNCcpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8ndmxrYmlgWmxxYGgnKSdga2RnaWBVaWRmYG1qaWFgd3YnP3F3cGB4JSUl"}');
+            res.setBody(SESSION_RESPONSE);
             res.setStatusCode(200);
             return res;
         }
     }
+    
     @TestSetup
     static void setupTestData() {
         // Create test user with Stripe API Access permission set
@@ -29,9 +36,11 @@ public class StripeSubscriptionTriggerHelperTest {
                                 'PricingPlanAndPricingTier', 'StripeSubscription'}
         );
     }
+    
     private static User getTestUser() {
         return [SELECT Id FROM User WHERE Email LIKE 'testuser%@testorg.com' LIMIT 1];
     }
+    
     @IsTest
     static void processStripeSubscriptionAfterUpdate_SendSubscriptionToStripe_success(){
         User testUser = getTestUser();

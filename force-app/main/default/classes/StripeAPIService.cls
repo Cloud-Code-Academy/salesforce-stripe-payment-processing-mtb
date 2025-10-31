@@ -30,7 +30,7 @@ public with sharing class StripeAPIService {
                 customerId = stripeResponse.id;
             } 
             // If the HTTP response code is not successful, throw StripeException
-            throw new StripeException(); 
+            throw new StripeException(String.valueOf(res.getStatusCode()) + ': ' + String.valueOf(res?.getBody().toString())); 
         } catch (Exception ex) {
             // If the error occured when code was generating HttpRequest
             Logger.error('Failed to generate HttpRequest: ', ex);
@@ -156,7 +156,7 @@ public with sharing class StripeAPIService {
             HttpResponse res = makeCallout(endPoint, requestBody);
             if (res.getStatusCode() == 200) {
                 StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-                defaultMethodId = stripeResponse.id;
+                attachedMethodId = stripeResponse.id;
             }
         } catch (Exception ex) {
             Logger.error('Failed to generate HttpRequest: ', ex);
