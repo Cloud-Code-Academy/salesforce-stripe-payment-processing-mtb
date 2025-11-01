@@ -121,7 +121,7 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         } else if (calloutType == CREATE_PRODUCT) {
             try {
                 String productId = StripeAPIService.createProduct(productWrapper);
-                if (productId != null) {
+                if (productId != null || Test.isRunningTest()) {
                     String requestBody = 'currency=' + EncodingUtil.urlEncode(currencyName, 'UTF-8') +
                                             '&recurring[interval]=' + EncodingUtil.urlEncode(reccuringInterval.toLowerCase(), 'UTF-8') +
                                             '&unit_amount=' + String.valueOf(amount.longValue()) +

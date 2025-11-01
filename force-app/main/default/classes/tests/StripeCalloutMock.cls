@@ -4,43 +4,49 @@
  */
 @IsTest
 public class StripeCalloutMock implements HttpCalloutMock{
+    private Integer statusCode;
+    private String endPointEnding;
     private Boolean throwException;
     private String exceptionMessage;
     private Integer calloutCount = 0;
 
+    public StripeCalloutMock(Integer statusCode, String endPointEnding){
+        this.statusCode = statusCode;
+        this.endPointEnding = endPointEnding;
+    }
     public HttpResponse respond(HttpRequest req) {
         // TODO: Implement the response logic based on the configuration
         HttpResponse res = new HttpResponse();
+        res.setStatusCode(this.statusCode);
+        res.setBody(this.endPointEnding);
         res.setHeader('Content-Type', 'application/json');
-        calloutCount++;
-        // If throwException is true, throw a CalloutException
-        // Otherwise, create and return an HttpResponse with the appropriate status code and body
-        /*if (statusCode == 200 && endpoint == 'subscriptions') {
+        // Create and return an HttpResponse with the appropriate status code and body
+        if (statusCode == 200 && endPointEnding == 'subscriptions') {
             res.setStatusCode(200);
             res.setBody(
                 '{ "id": "sub_1SL0dlF3hNTtzVuGK5JQfCji", "object": "subscription", "application": null, "application_fee_percent": null, "automatic_tax": { "disabled_reason": null, "enabled": false, "liability": null }, "billing_cycle_anchor": 1761134141, "billing_cycle_anchor_config": null, "billing_mode": { "flexible": { "proration_discounts": "included" }, "type": "flexible", "updated_at": 1761134141 }, "billing_thresholds": null, "cancel_at": null, "cancel_at_period_end": false, "canceled_at": null, "cancellation_details": { "comment": null, "feedback": null, "reason": null }, "collection_method": "charge_automatically", "created": 1761134141, "currency": "usd", "customer": "cus_TEx3VQK1lXtsZJ", "days_until_due": null, "default_payment_method": null, "default_source": null, "default_tax_rates": [], "description": null, "discounts": [], "ended_at": null, "invoice_settings": { "account_tax_ids": null, "issuer": { "type": "self" } }, "items": { "object": "list", "data": [ { "id": "si_THZnzKpoluPeBp", "object": "subscription_item", "billing_thresholds": null, "created": 1761134142, "current_period_end": 1763812541, "current_period_start": 1761134141, "discounts": [], "metadata": {}, "plan": { "id": "price_1SIqQsF3hNTtzVuGPbqXboZf", "object": "plan", "active": true, "amount": 1, "amount_decimal": "1", "billing_scheme": "per_unit", "created": 1760618246, "currency": "usd", "interval": "month", "interval_count": 1, "livemode": false, "metadata": {}, "meter": null, "nickname": null, "product": "prod_TFKutgFGnq4SV5", "tiers_mode": null, "transform_usage": null, "trial_period_days": null, "usage_type": "licensed" }, "price": { "id": "price_1SIqQsF3hNTtzVuGPbqXboZf", "object": "price", "active": true, "billing_scheme": "per_unit", "created": 1760618246, "currency": "usd", "custom_unit_amount": null, "livemode": false, "lookup_key": null, "metadata": {}, "nickname": null, "product": "prod_TFKutgFGnq4SV5", "recurring": { "interval": "month", "interval_count": 1, "meter": null, "trial_period_days": null, "usage_type": "licensed" }, "tax_behavior": "unspecified", "tiers_mode": null, "transform_quantity": null, "type": "recurring", "unit_amount": 1, "unit_amount_decimal": "1" }, "quantity": 1, "subscription": "sub_1SL0dlF3hNTtzVuGK5JQfCji", "tax_rates": [] } ], "has_more": false, "total_count": 1, "url": "/v1/subscription_items?subscription=sub_1SL0dlF3hNTtzVuGK5JQfCji" }, "latest_invoice": "in_1SL0dmF3hNTtzVuGFfqumZAO", "livemode": false, "metadata": {}, "next_pending_invoice_item_invoice": null, "on_behalf_of": null, "pause_collection": null, "payment_settings": { "payment_method_options": null, "payment_method_types": null, "save_default_payment_method": "off" }, "pending_invoice_item_interval": null, "pending_setup_intent": "seti_1SL0dmF3hNTtzVuGh330JPBx", "pending_update": null, "plan": { "id": "price_1SIqQsF3hNTtzVuGPbqXboZf", "object": "plan", "active": true, "amount": 1, "amount_decimal": "1", "billing_scheme": "per_unit", "created": 1760618246, "currency": "usd", "interval": "month", "interval_count": 1, "livemode": false, "metadata": {}, "meter": null, "nickname": null, "product": "prod_TFKutgFGnq4SV5", "tiers_mode": null, "transform_usage": null, "trial_period_days": null, "usage_type": "licensed" }, "quantity": 1, "schedule": null, "start_date": 1761134141, "status": "active", "test_clock": null, "transfer_data": null, "trial_end": null, "trial_settings": { "end_behavior": { "missing_payment_method": "create_invoice" } }, "trial_start": null }'
             );
-        } else if (statusCode == 200 && endpoint == 'sessions') {
+        } else if (statusCode == 200 && endPointEnding == 'sessions') {
             res.setStatusCode(200);
             res.setBody(
                 '{ "id": "cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM", "object": "checkout.session", "adaptive_pricing": { "enabled": false }, "after_expiration": null, "allow_promotion_codes": null, "amount_subtotal": 12, "amount_total": 12, "automatic_tax": { "enabled": false, "liability": null, "provider": null, "status": null }, "billing_address_collection": null, "branding_settings": { "background_color": "#ffffff", "border_style": "rounded", "button_color": "#0074d4", "display_name": "MTB sandbox", "font_family": "default", "icon": null, "logo": null }, "cancel_url": null, "client_reference_id": null, "client_secret": null, "collected_information": null, "consent": null, "consent_collection": null, "created": 1761134737, "currency": "usd", "currency_conversion": null, "custom_fields": [], "custom_text": { "after_submit": null, "shipping_address": null, "submit": null, "terms_of_service_acceptance": null }, "customer": "cus_TGoNaKDkXGX4mz", "customer_creation": null, "customer_details": null, "customer_email": null, "discounts": [], "expires_at": 1761221137, "invoice": null, "invoice_creation": null, "livemode": false, "locale": null, "metadata": {}, "mode": "subscription", "origin_context": null, "payment_intent": null, "payment_link": null, "payment_method_collection": "always", "payment_method_configuration_details": { "id": "pmc_1SH2C2F3hNTtzVuGaAM741P8", "parent": null }, "payment_method_options": { "card": { "request_three_d_secure": "automatic" } }, "payment_method_types": [ "card", "link" ], "payment_status": "unpaid", "permissions": null, "phone_number_collection": { "enabled": false }, "recovered_from": null, "saved_payment_method_options": { "allow_redisplay_filters": [ "always" ], "payment_method_remove": "disabled", "payment_method_save": null }, "setup_intent": null, "shipping_address_collection": null, "shipping_cost": null, "shipping_options": [], "status": "open", "submit_type": null, "subscription": null, "success_url": "https://demoqa.com/interaction", "total_details": { "amount_discount": 0, "amount_shipping": 0, "amount_tax": 0 }, "ui_mode": "hosted", "url": "https://checkout.stripe.com/c/pay/cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0Vk03R1BDNm1LUXF%2FU3BCSWBxV2hyVEgzQF89YEB9YklSbmluNnxSa3c9N3REYU93c1R9NnRwUTR1V2lyPGx1ampNcGNvalIyMWN8TExValEyTGtXQ1xGNTVwXFYzX3R%2FNCcpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8ndmxrYmlgWmxxYGgnKSdga2RnaWBVaWRmYG1qaWFgd3YnP3F3cGB4JSUl", "wallet_options": null }'
             );
-        } else if (statusCode == 200 && endpoint == 'customers') {
+        } else if (statusCode == 200 && endPointEnding == 'customers') {
             res.setStatusCode(200);
             res.setBody(
                 '{ "id": "cus_THZzLMvNDK5uWm", "object": "customer", "address": null, "balance": 0, "created": 1761134844, "currency": null, "default_source": null, "delinquent": false, "description": null, "discount": null, "email": null, "invoice_prefix": "I9JSPHUO", "invoice_settings": { "custom_fields": null, "default_payment_method": null, "footer": null, "rendering_options": null }, "livemode": false, "metadata": {}, "name": null, "next_invoice_sequence": 1, "phone": null, "preferred_locales": [], "shipping": null, "tax_exempt": "none", "test_clock": null }'
             );
-        } else if (statusCode == 200 && endpoint == 'payment_methods') {
+        } else if (statusCode == 200 && endPointEnding == 'payment_methods') {
             res.setStatusCode(200);
             res.setBody(
                 '{ "id": "pm_1SL0s9F3hNTtzVuGZuInzLMb", "object": "payment_method", "allow_redisplay": "unspecified", "billing_details": { "address": { "city": null, "country": null, "line1": null, "line2": null, "postal_code": null, "state": null }, "email": null, "name": null, "phone": null, "tax_id": null }, "card": { "brand": "visa", "checks": { "address_line1_check": null, "address_postal_code_check": null, "cvc_check": "unchecked" }, "country": "US", "display_brand": "visa", "exp_month": 10, "exp_year": 2026, "fingerprint": "VumU3W2XrbstIezJ", "funding": "credit", "generated_from": null, "last4": "4242", "networks": { "available": [ "visa" ], "preferred": null }, "regulated_status": "unregulated", "three_d_secure_usage": { "supported": true }, "wallet": null }, "created": 1761135033, "customer": null, "livemode": false, "metadata": {}, "type": "card" }'
             );
-        } else*/ if (calloutCount == 1 || req.getEndpoint().contains('prices')) {
+        } else if (statusCode == 200 && endPointEnding == 'prices') {
             res.setStatusCode(200);
             res.setBody(
                 '{ "id": "price_1SL0u0F3hNTtzVuGs8NtCjiW", "object": "price", "active": true, "billing_scheme": "per_unit", "created": 1761135148, "currency": "usd", "custom_unit_amount": null, "livemode": false, "lookup_key": null, "metadata": {}, "nickname": null, "product": "prod_TFKutgFGnq4SV5", "recurring": { "interval": "month", "interval_count": 1, "meter": null, "trial_period_days": null, "usage_type": "licensed" }, "tax_behavior": "unspecified", "tiers_mode": null, "transform_quantity": null, "type": "recurring", "unit_amount": 1, "unit_amount_decimal": "1" }'
             );
-        } else if (calloutCount == 0 || req.getEndpoint().contains('products')) {
+        } else if (statusCode == 200 && endPointEnding =='products') {
             res.setStatusCode(200);
             res.setBody(
                 '{ "id": "prod_THa4qnfsETOFa2", "object": "product", "active": true, "attributes": [], "created": 1761135187, "default_price": null, "description": null, "images": [], "livemode": false, "marketing_features": [], "metadata": {}, "name": "Photo", "package_dimensions": null, "shippable": null, "statement_descriptor": null, "tax_code": null, "type": "service", "unit_label": null, "updated": 1761135187, "url": null }'
