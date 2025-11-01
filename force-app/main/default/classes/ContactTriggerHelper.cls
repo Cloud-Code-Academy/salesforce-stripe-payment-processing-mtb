@@ -10,15 +10,15 @@ public with sharing class ContactTriggerHelper {
             for (Contact cont : newList) {
                 Stripe_Customer__c customer = new Stripe_Customer__c();
                 customer.Contact__c = cont.Id;
-                if (cont.Email != null) {
+                if (String.isNotBlank(cont.Email)) {
                     customer.Customer_Email__c = cont.Email;
                 }
                 if (String.isNotBlank(cont.FirstName)) {
-                    customer.Customer_Name__c = cont.LastName + ' ' + cont.FirstName;    
+                    customer.Customer_Name__c = cont.FirstName + ' ' + cont.LastName;    
                 } else {
                     customer.Customer_Name__c = cont.LastName;
                 }
-                if (cont.Phone != null) {
+                if (String.isNotBlank(cont.Phone)) {
                     customer.Customer_Phone__c = cont.Phone;
                 }
                 stripeCustomersForInsert.add(customer);
@@ -30,7 +30,7 @@ public with sharing class ContactTriggerHelper {
                 throw new SecurityException('User does not have create access to Stripe_Customer__c object');
             }
         } catch (Exception ex) {
-            Logger.error('Failed to insert Contact: ', ex);
+            Logger.error('Failed to insert Stripe_Customer__c: ', ex);
             Logger.saveLog();
         }
     }

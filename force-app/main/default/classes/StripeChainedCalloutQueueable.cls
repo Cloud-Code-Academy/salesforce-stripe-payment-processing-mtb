@@ -57,13 +57,16 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
             }
         } else if (calloutType == CREATE_DEFAULT_METHOD) {
             try {
-                String defaultMethodId = StripeAPIService.createDefaultMethod(customerId);
+                String defaultMethodId = StripeAPIService.createDefaultMethod();
                 if (defaultMethodId != null) {
                     updateCustomer(recordId, defaultMethodId);
                     System.enqueueJob(new StripeFinalCalloutQueueable(customerId, defaultMethodId));
+                } else {
+                    Logger.error('Failed to get defaultMethodId');
+                    Logger.saveLog();
                 }
             } catch (Exception ex) {
-                 Logger.error('Failed to get defaultMethodId/update Stripe Customer record: ', ex);
+                 Logger.error('Failed to update Stripe Customer record: ', ex);
                 Logger.saveLog();
             }
         }
@@ -84,14 +87,14 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
                 try {
                     update as user pricingPlan;
                 } catch (Exception ex) {
-                    Logger.error('Error occured while updating Pricing Plan record: ', ex);
+                    Logger.error('Error occurred while updating Pricing Plan record: ', ex);
                     Logger.saveLog();
                 }
             } else {
                 throw new SecurityException('Stripe_Price_ID__c field of Pricing_Plan__c is not available for update');
             }
         } else {
-            throw new SecurityException('Stripe_Price_ID__c object is not available for update');
+            throw new SecurityException('Pricing_Plan__c object is not available for update');
         }
     }
     /**
@@ -107,12 +110,12 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
         );
         //Check whether Stripe_Customer__c object is available for update
         if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
-            //Check whether Stripe_Customer_ID__c field of Stripe_Customer__c object is available for update
+            //Check whether Default_Payment_Method__c field of Stripe_Customer__c object is available for update
             if (Schema.SObjectType.Stripe_Customer__c.fields.Default_Payment_Method__c.isUpdateable()) {
                 try {
                     update as user customer;
                 } catch (Exception ex) {
-                    Logger.error('Error occured while updating Stripe Customer record: ', ex);
+                    Logger.error('Error occurred while updating Stripe Customer record: ', ex);
                     Logger.saveLog();
                 }
             } else {

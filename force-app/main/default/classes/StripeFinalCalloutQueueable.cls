@@ -33,8 +33,12 @@ public class StripeFinalCalloutQueueable implements Queueable, Database.AllowsCa
             try {
                 String attachedPaymentMethod = StripeAPIService.attachPaymentMethod(defaultMethodId, 
                                                                                     customerId);
+                if (String.isBlank(attachedPaymentMethod)) {
+                    Logger.error('Payment method attachment returned null/empty response');
+                    Logger.saveLog();
+                }
             } catch (Exception ex) {
-                Logger.error('Failed to get subscriptionId/update Stripe Subscription record: ', ex);
+                Logger.error('Failed to attach Payment Method: ', ex);
                 Logger.saveLog();
             }
         }

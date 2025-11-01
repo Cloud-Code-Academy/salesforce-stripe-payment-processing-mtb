@@ -1,4 +1,5 @@
 public with sharing class StripeAPIService {
+    private static StripePaymentSettings__mdt paymentSetting = StripePaymentSettings__mdt.getInstance('CurrentSettings');
     private static final String API_NAMED_CREDENTIALS = 'callout:StripeAPI';
     private static final String CUSTOMER_ENDPOINT = '/v1/customers';
     private static final String PAYMENT_ENDPOINT = '/v1/payment_methods';
@@ -23,16 +24,11 @@ public with sharing class StripeAPIService {
                                     '&email=' + EncodingUtil.urlEncode(customerWrapper.email, 'UTF-8') +
                                     '&phone=' + EncodingUtil.urlEncode(customerWrapper.phone, 'UTF-8');
             
-            HttpResponse res = makeCallout(endPoint, requestBody);
+            StripeWrapper stripeResponse = makeCallout(endPoint, requestBody);
             // If the HTTP response code is successful, parse the JSON response and Id of created Stripe Customer
-            if (res.getStatusCode() == 200) {
-                StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-                customerId = stripeResponse.id;
-            } 
-            // If the HTTP response code is not successful, throw StripeException
-            throw new StripeException(); 
+            customerId = stripeResponse.id;
         } catch (Exception ex) {
-            // If the error occured when code was generating HttpRequest
+            // If the error occurred when code was generating HttpRequest
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
         }
@@ -49,12 +45,8 @@ public with sharing class StripeAPIService {
         String priceId;
         try {
             String endPoint = API_NAMED_CREDENTIALS + PRICE_ENDPOINT;
-            HttpResponse res = makeCallout(endPoint, requestBody);
-            if (res.getStatusCode() == 200) {
-                StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-                priceId = stripeResponse.id;
-            }
-            //throw new StripeException();
+            StripeWrapper stripeResponse = makeCallout(endPoint, requestBody);
+            priceId = stripeResponse.id;
         } catch (Exception ex) {
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
@@ -74,12 +66,8 @@ public with sharing class StripeAPIService {
         try {
             String endPoint = API_NAMED_CREDENTIALS + PRODUCT_ENDPOINT;
             String requestBody = 'name=' + EncodingUtil.urlEncode(productWrapper.name, 'UTF-8');
-            HttpResponse res = makeCallout(endPoint, requestBody);
-            if (res.getStatusCode() == 200) {
-                StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-                productId = stripeResponse.id;
-            }
-            //throw new StripeException();
+            StripeWrapper stripeResponse = makeCallout(endPoint, requestBody);
+            productId = stripeResponse.id;
         } catch (Exception ex) {
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
@@ -101,13 +89,10 @@ public with sharing class StripeAPIService {
         try {
             String endPoint = API_NAMED_CREDENTIALS + SUBSCRIPTION_ENDPOINT;
             String requestBody = 'customer=' + EncodingUtil.urlEncode(customerId, 'UTF-8') +
-                             '&items[0][price]=' + EncodingUtil.urlEncode(priceId, 'UTF-8') + 
-                             '&default_payment_method=' + EncodingUtil.urlEncode(defaultMethodId, 'UTF-8');
-            HttpResponse res = makeCallout(endPoint, requestBody);
-            if (res.getStatusCode() == 200) {
-                StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-                subscriptionId = stripeResponse.id;
-            }
+                                '&items[0][price]=' + EncodingUtil.urlEncode(priceId, 'UTF-8') + 
+                                '&default_payment_method=' + EncodingUtil.urlEncode(defaultMethodId, 'UTF-8');
+            StripeWrapper stripeResponse = makeCallout(endPoint, requestBody);
+            subscriptionId = stripeResponse.id;
         } catch (Exception ex) {
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
@@ -122,17 +107,16 @@ public with sharing class StripeAPIService {
      * @param customerId The Stripe customer ID (currently unused in implementation but may be intended for future use)
      * @return String The Stripe payment method ID if successful, null if an error occurs
      */
-    public static String createDefaultMethod(String customerId){
+    public static String createDefaultMethod(){
         String defaultMethodId;
         try {
             String endPoint = API_NAMED_CREDENTIALS + PAYMENT_ENDPOINT;
-            String requestBody = 'type=' + EncodingUtil.urlEncode('card', 'UTF-8')+
-                                '&card[token]=' + EncodingUtil.urlEncode('tok_visa', 'UTF-8');
-            HttpResponse res = makeCallout(endPoint, requestBody);
-            if (res.getStatusCode() == 200) {
-                StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-                defaultMethodId = stripeResponse.id;
-            }
+            String requestBody = 'type=' + EncodingUtil.urlEncode(
+                                paymentSetting.DefaultMethodType__c, 'UTF-8')+
+                                '&card[token]=' + EncodingUtil.urlEncode(
+                                paymentSetting.DefaultMethodCardToken__c, 'UTF-8');
+            StripeWrapper stripeResponse = makeCallout(endPoint, requestBody);
+            defaultMethodId = stripeResponse.id;
         } catch (Exception ex) {
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
@@ -153,11 +137,8 @@ public with sharing class StripeAPIService {
         try {
             String endPoint = API_NAMED_CREDENTIALS + PAYMENT_ENDPOINT + '/' + defaultMethodId + '/attach';
             String requestBody = 'customer=' + EncodingUtil.urlEncode(customerId, 'UTF-8');
-            HttpResponse res = makeCallout(endPoint, requestBody);
-            if (res.getStatusCode() == 200) {
-                StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-                defaultMethodId = stripeResponse.id;
-            }
+            StripeWrapper stripeResponse = makeCallout(endPoint, requestBody);
+            attachedMethodId = stripeResponse.id;
         } catch (Exception ex) {
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
@@ -180,12 +161,11 @@ public with sharing class StripeAPIService {
             String requestBody = 'customer=' + EncodingUtil.urlEncode(customerId, 'UTF-8') + 
                                 '&line_items[0][price]=' + EncodingUtil.urlEncode(priceId, 'UTF-8') +
                                 '&line_items[0][quantity]=' + String.valueOf(1) +
-                                '&mode=' + EncodingUtil.urlEncode('subscription', 'UTF-8') +
-                                '&success_url=' + EncodingUtil.urlEncode('https://example.com/success', 'UTF-8');
-            HttpResponse res = makeCallout(endPoint, requestBody);
-            if (res.getStatusCode() == 200) {
-                stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
-            }
+                                '&mode=' + EncodingUtil.urlEncode(
+                                paymentSetting.CheckoutSessionMode__c, 'UTF-8') +
+                                '&success_url=' + EncodingUtil.urlEncode(
+                                paymentSetting.Successful_URL__c, 'UTF-8');
+            stripeResponse= makeCallout(endPoint, requestBody);
         } catch (Exception ex) {
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
@@ -201,28 +181,31 @@ public with sharing class StripeAPIService {
      * @param requestBody The URL-encoded request body containing API parameters
      * @return HttpResponse The HTTP response from Stripe API if successful, null if an error occurs
      */
-    public static HttpResponse makeCallout(String endPoint, String requestBody){
-        HttpResponse res;
+    public static StripeWrapper makeCallout(String endPoint, String requestBody){
+        StripeWrapper stripeResponse;
         try {
             Http http = new Http();
             HttpRequest req = new HttpRequest();
             req.setEndpoint(endPoint);
             req.setHeader('Content-Type', 'application/x-www-form-urlencoded');
             req.setMethod('POST');
+            req.setTimeout(120000);
             req.setBody(requestBody);
-            res = http.send(req);
+            HttpResponse res = http.send(req);
             Logger.info('HTTP Response Received')
                 .setMessage('Status Code: ' + res.getStatusCode())
-                .addTag('HTTP-Response');
-            
+                .addTag('HTTP-Response');            
             Logger.finest('Response Body: ' + res.getBody());
-            // If the HTTP response code is not successful, throw StripeException
-            throw new StripeException(); 
+            Logger.saveLog();
+            if (res.getBody() != null) {
+                stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody(), StripeWrapper.class);
+                stripeResponse.statusCode = res.getStatusCode();
+            }
         } catch (Exception ex) {
-            // If the error occured when code was generating HttpRequest
+            // If the error occurred when code was generating HttpRequest
             Logger.error('Failed to generate HttpRequest: ', ex);
             Logger.saveLog();
         }
-        return res;
+        return stripeResponse;
     }
 }
