@@ -290,6 +290,27 @@ Resources:
         - Key: Purpose
           Value: BatchAccumulation
 
+  # Stripe Event Idempotency Table - Prevent duplicate event processing
+  StripeEventIdempotencyTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: stripe-event-idempotency
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: EventIdempotency
+
   # ==========================================
   # LAMBDA FUNCTION - Webhook Receiver
   # ==========================================
@@ -331,6 +352,8 @@ Resources:
             TableName: !Ref RateLimitPerMinuteTable
         - DynamoDBCrudPolicy:
             TableName: !Ref RateLimitPerDayTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StripeEventIdempotencyTable
         # Permission to read secrets
         - Statement:
           - Effect: Allow
@@ -403,6 +426,8 @@ Resources:
             TableName: !Ref RateLimitPerMinuteTable
         - DynamoDBCrudPolicy:
             TableName: !Ref RateLimitPerDayTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StripeEventIdempotencyTable
         # Permission to read secrets
         - Statement:
           - Effect: Allow
@@ -455,6 +480,13 @@ Resources:
       Timeout: 300  # 5 minutes for bulk operations
       MemorySize: 1024  # More memory for batch processing
       # ReservedConcurrentExecutions: 2  # Limit concurrency for bulk operations
+      Environment:
+        Variables:
+          # Add missing environment variables for Bulk Processor
+          STRIPE_API_KEY_ARN: !Ref StripeApiKeySecret
+          STRIPE_WEBHOOK_SECRET_ARN: !Ref StripeWebhookSecret
+          SALESFORCE_CLIENT_SECRET_ARN: !Ref SalesforceClientSecret
+          SALESFORCE_INSTANCE_URL: !Ref SalesforceInstanceUrl
       Policies:
         # Permission to receive messages from low-priority SQS queue
         - SQSPollerPolicy:
@@ -470,6 +502,8 @@ Resources:
             TableName: !Ref RateLimitPerMinuteTable
         - DynamoDBCrudPolicy:
             TableName: !Ref RateLimitPerDayTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StripeEventIdempotencyTable
         # Permission to read secrets
         - Statement:
           - Effect: Allow

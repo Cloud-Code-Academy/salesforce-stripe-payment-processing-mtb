@@ -20,7 +20,7 @@ import json
 from datetime import datetime, timezone, timedelta
 
 from app.models.stripe_events import StripeEvent
-from app.services.dynamodb_service import dynamodb_service
+from app.services.dynamodb_service import dynamodb_service, ConditionalCheckFailedException
 from app.services.sqs_service import sqs_service
 from app.utils.exceptions import ValidationException
 from app.utils.logging_config import get_logger
@@ -491,8 +491,8 @@ class EventRouter:
             # If write succeeded, event is new (not a duplicate)
             logger.debug(f"Event marked as processed: {event_id}")
             return False
-            
-        except self.dynamodb.ConditionalCheckFailedException:
+
+        except ConditionalCheckFailedException:
             # Write failed because item already exists (duplicate event)
             logger.debug(f"Event already processed: {event_id}")
             return True

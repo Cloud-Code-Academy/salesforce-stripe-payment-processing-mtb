@@ -23,6 +23,11 @@ from app.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+class ConditionalCheckFailedException(Exception):
+    """Raised when a conditional check fails in DynamoDB"""
+    pass
+
+
 class DynamoDBService:
     """
     DynamoDB service for caching and temporary storage.
@@ -267,6 +272,52 @@ class DynamoDBService:
         except ClientError as e:
             logger.error(f"Failed to put item in {table_name}: {e}")
             raise
+        except Exception as e:
+            logger.error(f"Unexpected error putting item in {table_name}: {e}")
+            raise
+
+    async def put_item_if_not_exists(self, table_name: str, item: Dict[str, Any]) -> bool:
+        """
+        Put an item into DynamoDB table only if it doesn't already exist.
+        Uses conditional expression to ensure idempotency.
+
+        Args:
+            table_name: Name of the DynamoDB table
+            item: Item dict to store (must include primary key fields)
+
+        Returns:
+            True if successful (item was created)
+
+        Raises:
+            ConditionalCheckFailedException: If item already exists
+        """
+        if not self._connected:
+            await self.connect()
+
+        try:
+            # Get the table
+            table = self.client.Table(table_name)
+
+            # Determine primary key from item
+            # Assume the primary key is 'event_id' for the idempotency table
+            primary_key_field = list(item.keys())[0]
+
+            # Put the item with condition that it doesn't exist
+            table.put_item(
+                Item=item,
+                ConditionExpression=f"attribute_not_exists({primary_key_field})"
+            )
+
+            logger.debug(f"Item created in {table_name} (conditional)")
+            return True
+
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                # Item already exists
+                raise ConditionalCheckFailedException(f"Item already exists in {table_name}")
+            else:
+                logger.error(f"Failed to put item in {table_name}: {e}")
+                raise
         except Exception as e:
             logger.error(f"Unexpected error putting item in {table_name}: {e}")
             raise

@@ -23,7 +23,7 @@ from enum import Enum
 from typing import Dict, Any, List, Optional
 
 import httpx
-from app.auth.salesforce_oauth import get_salesforce_oauth
+from app.auth.salesforce_oauth import salesforce_oauth
 from app.config import get_settings
 from app.utils.logging_config import get_logger
 from app.utils.exceptions import SalesforceAPIException, RetryableException
@@ -64,8 +64,8 @@ class SalesforceBulkAPIService:
 
     def __init__(self):
         """Initialize Bulk API service"""
-        self.oauth = get_salesforce_oauth()
-        self.base_url = f"{settings.salesforce_instance_url}/services/data/v{settings.salesforce_api_version}/jobs/ingest"
+        self.oauth = salesforce_oauth
+        self.base_url = f"{settings.salesforce_instance_url}/services/data/{settings.salesforce_api_version}/jobs/ingest"
         self.timeout = httpx.Timeout(30.0, connect=10.0)
 
     async def _get_headers(self) -> Dict[str, str]:
@@ -330,44 +330,57 @@ class SalesforceBulkAPIService:
             }
         )
 
+        poll_count = 0
         while elapsed < max_wait_time:
             status = await self.get_job_status(job_id)
             state = status["state"]
+            poll_count += 1
 
-            logger.debug(
-                f"Job {job_id} state: {state}",
+            logger.info(
+                f"[BULK_API_POLLING] Job status check #{poll_count}",
                 extra={
                     "job_id": job_id,
                     "state": state,
+                    "elapsed_seconds": int(elapsed),
                     "records_processed": status.get("numberRecordsProcessed", 0),
-                    "records_failed": status.get("numberRecordsFailed", 0)
+                    "records_failed": status.get("numberRecordsFailed", 0),
+                    "poll_count": poll_count
                 }
             )
 
             if state == BulkJobState.JOB_COMPLETE.value:
-                logger.info(
-                    f"Job completed successfully: {job_id}",
+                logger.critical(
+                    f"[BULK_API_JOB_COMPLETE] Job completed successfully!",
                     extra={
                         "job_id": job_id,
+                        "final_state": state,
                         "records_processed": status.get("numberRecordsProcessed", 0),
-                        "records_failed": status.get("numberRecordsFailed", 0)
+                        "records_failed": status.get("numberRecordsFailed", 0),
+                        "total_polls": poll_count,
+                        "elapsed_seconds": int(elapsed)
                     }
                 )
                 return status
 
             elif state in [BulkJobState.FAILED.value, BulkJobState.ABORTED.value]:
                 error_msg = status.get("errorMessage", "Unknown error")
-                logger.error(
-                    f"Job failed: {job_id} - {error_msg}",
+                logger.critical(
+                    f"[BULK_API_JOB_FAILED] Job failed or was aborted",
                     extra={
                         "job_id": job_id,
                         "state": state,
-                        "error": error_msg
+                        "error": error_msg,
+                        "total_polls": poll_count
                     }
                 )
                 raise SalesforceAPIException(f"Bulk job failed: {error_msg}")
 
             # Job still processing
+            logger.debug(
+                f"[BULK_API_POLLING_WAIT] Waiting {poll_interval}s before next poll",
+                extra={"job_id": job_id, "poll_count": poll_count}
+            )
+
             await asyncio.sleep(poll_interval)
             elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
 
@@ -457,9 +470,9 @@ class SalesforceBulkAPIService:
 
         fieldnames = sorted(list(fieldnames))
 
-        # Create CSV
+        # Create CSV with LF line endings (must match job creation lineEnding parameter)
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator='\n')
         writer.writeheader()
         writer.writerows(records)
 
@@ -490,37 +503,121 @@ class SalesforceBulkAPIService:
         Returns:
             Job information and results
         """
-        logger.info(
-            f"Starting bulk upsert: {len(records)} {object_name} records",
+        logger.critical(
+            f"[BULK_API_UPSERT_START] Starting bulk upsert workflow",
             extra={
                 "object": object_name,
                 "record_count": len(records),
-                "external_id_field": external_id_field
+                "external_id_field": external_id_field,
+                "wait_for_completion": wait_for_completion
             }
         )
 
         # Create job
+        logger.info(
+            f"[BULK_API_JOB_CREATING] Creating Bulk API 2.0 job",
+            extra={
+                "object": object_name,
+                "operation": "upsert"
+            }
+        )
+
         job_info = await self.create_job(
             object_name=object_name,
             operation=BulkJobOperation.UPSERT,
             external_id_field=external_id_field
         )
         job_id = job_info["id"]
+        logger.critical(
+            f"[BULK_API_JOB_CREATED] Job created successfully",
+            extra={
+                "job_id": job_id,
+                "job_state": job_info.get("state")
+            }
+        )
 
         try:
             # Convert records to CSV
+            logger.info(
+                f"[BULK_API_CSV_GENERATING] Converting records to CSV format",
+                extra={
+                    "record_count": len(records),
+                    "object": object_name
+                }
+            )
+
             csv_data = self._records_to_csv(records)
 
+            logger.critical(
+                f"[BULK_API_CSV_GENERATED] CSV data generated",
+                extra={
+                    "csv_size_bytes": len(csv_data.encode('utf-8')) if csv_data else 0,
+                    "csv_line_count": len(csv_data.split('\n')) if csv_data else 0,
+                    "csv_empty": len(csv_data) == 0,
+                    "record_count": len(records)
+                }
+            )
+
+            if not csv_data:
+                logger.warning(f"[BULK_API_CSV_EMPTY] CSV is empty - no data to upload!")
+                raise SalesforceAPIException("CSV conversion resulted in empty data")
+
             # Upload data
+            logger.info(
+                f"[BULK_API_UPLOAD_STARTING] Uploading CSV data to job",
+                extra={
+                    "job_id": job_id,
+                    "csv_size_bytes": len(csv_data.encode('utf-8')),
+                    "record_count": len(records)
+                }
+            )
+
             await self.upload_job_data(job_id, csv_data)
 
+            logger.critical(
+                f"[BULK_API_UPLOAD_COMPLETE] CSV data uploaded successfully",
+                extra={"job_id": job_id}
+            )
+
             # Close job
+            logger.info(
+                f"[BULK_API_JOB_CLOSING] Marking job upload complete and starting processing",
+                extra={"job_id": job_id}
+            )
+
             await self.close_job(job_id)
+
+            logger.critical(
+                f"[BULK_API_JOB_CLOSED] Job closed - Salesforce now processing",
+                extra={"job_id": job_id}
+            )
 
             # Wait for completion if requested
             if wait_for_completion:
+                logger.info(
+                    f"[BULK_API_WAIT_START] Waiting for job completion (polling every 5 seconds)",
+                    extra={"job_id": job_id}
+                )
+
                 final_status = await self.wait_for_job_completion(job_id)
+
+                logger.critical(
+                    f"[BULK_API_WAIT_COMPLETE] Job completed - retrieving results",
+                    extra={
+                        "job_id": job_id,
+                        "final_state": final_status.get("state")
+                    }
+                )
+
                 results = await self.get_job_results(job_id)
+
+                logger.critical(
+                    f"[BULK_API_RESULTS_RETRIEVED] Results retrieved from Salesforce",
+                    extra={
+                        "job_id": job_id,
+                        "result_count": len(results)
+                    }
+                )
 
                 return {
                     "job_id": job_id,
@@ -528,6 +625,11 @@ class SalesforceBulkAPIService:
                     "results": results
                 }
             else:
+                logger.info(
+                    f"[BULK_API_ASYNC_SUBMITTED] Job submitted for asynchronous processing",
+                    extra={"job_id": job_id}
+                )
+
                 return {
                     "job_id": job_id,
                     "status": job_info,

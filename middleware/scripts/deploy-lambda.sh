@@ -113,21 +113,66 @@ echo ""
 print_info "All prerequisites met!"
 echo ""
 
-# Prompt for sensitive parameters
-print_warning "You will be prompted for sensitive configuration values."
-print_info "These values will be stored in AWS Secrets Manager (encrypted)."
-echo ""
+# Load configuration from .env file or prompt
+ENV_FILE=".env"
 
-read -p "Enter Stripe API Key (sk_test_...): " STRIPE_API_KEY
-read -p "Enter Stripe Webhook Secret (whsec_...): " STRIPE_WEBHOOK_SECRET
-read -p "Enter Salesforce Client ID: " SALESFORCE_CLIENT_ID
-read -sp "Enter Salesforce Client Secret: " SALESFORCE_CLIENT_SECRET
-echo ""
-read -p "Enter Salesforce Instance URL [https://login.salesforce.com]: " SALESFORCE_INSTANCE_URL
-SALESFORCE_INSTANCE_URL=${SALESFORCE_INSTANCE_URL:-https://login.salesforce.com}
+if [ -f "${ENV_FILE}" ]; then
+    print_info "Found .env file - loading configuration..."
+
+    # Source the .env file (safely)
+    set -a
+    source "${ENV_FILE}"
+    set +a
+
+    # Check if all required values are present
+    if [ -n "${STRIPE_API_KEY}" ] && [ -n "${STRIPE_WEBHOOK_SECRET}" ] && \
+       [ -n "${SALESFORCE_CLIENT_ID}" ] && [ -n "${SALESFORCE_CLIENT_SECRET}" ] && \
+       [ -n "${SALESFORCE_INSTANCE_URL}" ]; then
+        print_success "Loaded all configuration values from .env file"
+        echo ""
+        print_info "Configuration:"
+        echo "  STRIPE_API_KEY: ${STRIPE_API_KEY:0:7}..."
+        echo "  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:0:7}..."
+        echo "  SALESFORCE_CLIENT_ID: ${SALESFORCE_CLIENT_ID:0:20}..."
+        echo "  SALESFORCE_CLIENT_SECRET: ${SALESFORCE_CLIENT_SECRET:0:7}..."
+        echo "  SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL}"
+        echo ""
+    else
+        print_warning ".env file exists but some values are missing"
+        print_info "Will prompt for missing values..."
+        echo ""
+    fi
+else
+    print_info "No .env file found - will prompt for configuration"
+    echo ""
+fi
+
+# Prompt for any missing values
+if [ -z "${STRIPE_API_KEY}" ]; then
+    read -p "Enter Stripe API Key (sk_test_...): " STRIPE_API_KEY
+fi
+
+if [ -z "${STRIPE_WEBHOOK_SECRET}" ]; then
+    read -p "Enter Stripe Webhook Secret (whsec_...): " STRIPE_WEBHOOK_SECRET
+fi
+
+if [ -z "${SALESFORCE_CLIENT_ID}" ]; then
+    read -p "Enter Salesforce Client ID: " SALESFORCE_CLIENT_ID
+fi
+
+if [ -z "${SALESFORCE_CLIENT_SECRET}" ]; then
+    read -sp "Enter Salesforce Client Secret: " SALESFORCE_CLIENT_SECRET
+    echo ""
+fi
+
+if [ -z "${SALESFORCE_INSTANCE_URL}" ]; then
+    read -p "Enter Salesforce Instance URL [https://login.salesforce.com]: " SALESFORCE_INSTANCE_URL
+    SALESFORCE_INSTANCE_URL=${SALESFORCE_INSTANCE_URL:-https://login.salesforce.com}
+fi
 
 echo ""
 print_info "Configuration captured successfully!"
+print_info "These values will be stored in AWS Secrets Manager (encrypted)."
 print_info "DynamoDB table will be created automatically - no additional setup needed!"
 echo ""
 

@@ -6,6 +6,7 @@ Checks all services including Bulk API and batch accumulator components.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException
@@ -22,6 +23,30 @@ from app.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["health"])
+
+
+def decimal_to_json_serializable(obj: Any) -> Any:
+    """
+    Convert Decimal values from DynamoDB to JSON-serializable types.
+
+    Args:
+        obj: Object that may contain Decimal values
+
+    Returns:
+        JSON-serializable version of the object
+    """
+    if isinstance(obj, Decimal):
+        # Convert to int if it's a whole number, otherwise to float
+        if obj % 1 == 0:
+            return int(obj)
+        else:
+            return float(obj)
+    elif isinstance(obj, dict):
+        return {key: decimal_to_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [decimal_to_json_serializable(item) for item in obj]
+    else:
+        return obj
 
 
 @router.get("/health")
@@ -82,7 +107,7 @@ async def readiness_check():
             "status": "healthy",
             "table_name": batch_accumulator.table_name,
             "active_batches": len(stats.get("batches", {})),
-            "stats": stats,
+            "stats": decimal_to_json_serializable(stats),
         }
     except Exception as e:
         dependencies["batch_accumulator"] = {
@@ -97,8 +122,8 @@ async def readiness_check():
         dependencies["sqs_main_queue"] = {
             "status": "healthy",
             "queue_url": sqs_service.queue_url,
-            "approximate_messages": attributes.get(
-                "ApproximateNumberOfMessages", "unknown"
+            "approximate_messages": decimal_to_json_serializable(
+                attributes.get("ApproximateNumberOfMessages", "unknown")
             ),
             "type": "main (HIGH/MEDIUM priority)",
         }
@@ -134,8 +159,10 @@ async def readiness_check():
             dependencies["sqs_low_priority_queue"] = {
                 "status": "healthy",
                 "queue_url": sqs_service.low_priority_queue_url,
-                "approximate_messages": low_priority_attributes.get("Attributes", {}).get(
-                    "ApproximateNumberOfMessages", "unknown"
+                "approximate_messages": decimal_to_json_serializable(
+                    low_priority_attributes.get("Attributes", {}).get(
+                        "ApproximateNumberOfMessages", "unknown"
+                    )
                 ),
                 "type": "low-priority (Bulk API)",
             }
@@ -187,7 +214,7 @@ async def readiness_check():
 
     return JSONResponse(
         status_code=status_code,
-        content={
+        content=decimal_to_json_serializable({
             "status": status,
             "timestamp": datetime.utcnow().isoformat(),
             "dependencies": dependencies,
@@ -196,7 +223,7 @@ async def readiness_check():
                 "healthy": sum(1 for d in dependencies.values() if d.get("status") == "healthy"),
                 "unhealthy": sum(1 for d in dependencies.values() if d.get("status") == "unhealthy"),
             },
-        },
+        }),
     )
 
 

@@ -50,13 +50,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Response with batch item failures (for partial batch failures)
     """
-    request_id = context.request_id if context else "local"
+    request_id = context.aws_request_id if context else "local"
 
     logger.info(
-        f"Bulk processor invoked",
+        f"[BULK_PROCESSOR_START] Lambda invocation received",
         extra={
             "request_id": request_id,
-            "record_count": len(event.get("Records", []))
+            "record_count": len(event.get("Records", [])),
+            "function_name": context.function_name if context else "local",
+            "memory_limit": context.memory_limit_in_mb if context else "N/A"
         }
     )
 
@@ -72,10 +74,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )
 
     logger.info(
-        f"Bulk processor completed",
+        f"[BULK_PROCESSOR_END] Lambda invocation completed",
         extra={
             "request_id": request_id,
-            "failures": len(batch_item_failures)
+            "batch_item_failures": len(batch_item_failures),
+            "status": "success" if len(batch_item_failures) == 0 else "partial_failure"
         }
     )
 
@@ -85,16 +88,91 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     }
 
 
+async def process_ready_batches(batch_accumulator) -> None:
+    """
+    Proactively check for and process any batches that are ready.
+
+    This ensures batches are processed as soon as the time/size threshold is exceeded,
+    rather than waiting for the next SQS event to arrive.
+
+    Called at the start of every Lambda invocation to drain any accumulated batches.
+    """
+    try:
+        stats = await batch_accumulator.get_batch_stats()
+
+        for batch_type_str, batch_stats in stats.get("batches", {}).items():
+            if batch_stats.get("ready"):
+                logger.critical(
+                    f"[BATCH_READY_PROACTIVE] Found ready batch on invocation start - processing immediately",
+                    extra={
+                        "batch_type": batch_type_str,
+                        "record_count": batch_stats.get("record_count"),
+                        "window_age_seconds": batch_stats.get("window_age_seconds", 0)
+                    }
+                )
+
+                try:
+                    # Convert batch_type_str back to BatchType enum
+                    batch_type = BatchType[batch_type_str.upper()]
+
+                    # Get the ready batch
+                    batch = await batch_accumulator.get_batch(batch_type)
+
+                    if batch and batch.get("events"):
+                        logger.info(
+                            f"[BATCH_PROACTIVE_PROCESSING] Processing proactively detected ready batch",
+                            extra={
+                                "batch_type": batch_type_str,
+                                "event_count": len(batch["events"])
+                            }
+                        )
+
+                        # Process the batch
+                        await process_customer_updates_bulk(batch["events"])
+
+                        # Clear the batch for next cycle
+                        await batch_accumulator.submit_batch(batch_type)
+
+                        logger.info(
+                            f"[BATCH_PROACTIVE_COMPLETE] Ready batch processed and cleared",
+                            extra={"batch_type": batch_type_str}
+                        )
+                    else:
+                        logger.warning(
+                            f"[BATCH_PROACTIVE_ERROR] Ready batch not found or empty on retrieval",
+                            extra={"batch_type": batch_type_str}
+                        )
+
+                except Exception as e:
+                    logger.error(
+                        f"[BATCH_PROACTIVE_FAILED] Failed to process ready batch: {str(e)}",
+                        exc_info=True,
+                        extra={
+                            "batch_type": batch_type_str,
+                            "error": str(e)
+                        }
+                    )
+                    # Don't raise - continue processing other batches
+
+    except Exception as e:
+        logger.error(
+            f"[BATCH_PROACTIVE_CHECK_ERROR] Error checking for ready batches: {str(e)}",
+            exc_info=True
+        )
+        # Don't raise - continue with normal SQS processing
+
+
 async def process_sqs_batch(event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
     """
     Process batch of SQS messages containing Stripe events.
 
     Flow:
-    1. Parse Stripe events from SQS messages
-    2. Add each event to batch accumulator (DynamoDB)
-    3. Check if batch is ready (size threshold OR time threshold)
-    4. If ready: process accumulated batch via Bulk API
-    5. Return SQS message IDs for failed events
+    1. Check for and process any ready batches from previous invocations (proactive)
+    2. Parse Stripe events from SQS messages
+    3. Add each event to batch accumulator (DynamoDB)
+    4. Check if batch is ready (size threshold OR time threshold)
+    5. If ready: process accumulated batch via Bulk API
+    6. Return SQS message IDs for failed events
 
     Args:
         event: SQS batch event
@@ -105,11 +183,25 @@ async def process_sqs_batch(event: Dict[str, Any], context: Any) -> List[Dict[st
     """
     records = event.get("Records", [])
 
-    if not records:
-        logger.warning("No records in SQS batch")
-        return []
+    logger.info(
+        f"[BATCH_PROCESSING_START] Processing SQS batch",
+        extra={
+            "record_count": len(records),
+            "event_keys": list(event.keys()) if isinstance(event, dict) else "not_a_dict"
+        }
+    )
 
     batch_accumulator = get_batch_accumulator()
+    logger.debug(f"[BATCH_ACCUMULATOR] Initialized batch accumulator")
+
+    # Proactively process any ready batches from previous invocations
+    # This ensures batches don't wait indefinitely for a new SQS event
+    await process_ready_batches(batch_accumulator)
+
+    # If no SQS records, we're done after processing ready batches
+    if not records:
+        logger.info("[BATCH_PROCESSING_INFO] No new SQS records, ready batches processed")
+        return []
 
     # Parse Stripe events from SQS messages
     stripe_events = []
@@ -143,12 +235,25 @@ async def process_sqs_batch(event: Dict[str, Any], context: Any) -> List[Dict[st
             # Don't add to failures - let it retry
             continue
 
+    logger.info(
+        f"[STRIPE_EVENTS_PARSED] Parsed Stripe events from SQS",
+        extra={
+            "parsed_count": len(stripe_events),
+            "failed_count": len(records) - len(stripe_events),
+            "event_types": list(set(e.type for e in stripe_events))
+        }
+    )
+
     if not stripe_events:
-        logger.warning("No valid Stripe events parsed from batch")
+        logger.warning("[BATCH_PROCESSING_ERROR] No valid Stripe events parsed from batch")
         return []
 
     # Add events to batch accumulator and process ready batches
     failed_event_ids = []
+    logger.info(
+        f"[BATCH_ACCUMULATION_START] Beginning event accumulation",
+        extra={"stripe_event_count": len(stripe_events)}
+    )
 
     for stripe_event in stripe_events:
         try:
@@ -163,41 +268,81 @@ async def process_sqs_batch(event: Dict[str, Any], context: Any) -> List[Dict[st
                 )
 
                 logger.info(
-                    f"Event added to batch accumulator",
+                    f"[BATCH_ACCUMULATION_STEP] Event added to batch accumulator",
                     extra={
                         "event_id": stripe_event.id,
+                        "customer_id": stripe_event.event_object.get("id", "unknown"),
                         "batch_type": batch_type.value,
                         "batch_ready": accumulation_result["batch_ready"],
                         "record_count": accumulation_result["record_count"],
-                        "window_age_seconds": accumulation_result.get("window_age_seconds", 0)
+                        "window_age_seconds": accumulation_result.get("window_age_seconds", 0),
+                        "size_threshold": 200,
+                        "time_threshold": 30
                     }
                 )
 
                 # If batch is ready, process it
                 if accumulation_result["batch_ready"]:
-                    logger.info(
-                        f"Batch ready for submission - triggering Bulk API",
+                    logger.critical(
+                        f"[BATCH_READY_TRIGGERED] Batch threshold reached - submitting to Bulk API!",
                         extra={
                             "batch_type": batch_type.value,
-                            "record_count": accumulation_result["record_count"]
+                            "record_count": accumulation_result["record_count"],
+                            "reason": "size" if accumulation_result["record_count"] >= 200 else "time_window",
+                            "window_age_seconds": accumulation_result.get("window_age_seconds", 0)
                         }
                     )
 
                     try:
                         # Get accumulated batch
                         batch = await batch_accumulator.get_batch(batch_type)
+                        logger.info(
+                            f"[BATCH_RETRIEVAL] Retrieved batch from accumulator",
+                            extra={
+                                "batch_type": batch_type.value,
+                                "batch_found": batch is not None,
+                                "event_count": len(batch["events"]) if batch else 0
+                            }
+                        )
+
                         if batch:
+                            logger.info(
+                                f"[BATCH_SUBMISSION_START] Beginning customer update bulk processing",
+                                extra={
+                                    "batch_type": batch_type.value,
+                                    "event_count": len(batch["events"]),
+                                    "batch_id": batch.get("batch_id")
+                                }
+                            )
+
                             # Process the batch
                             await process_customer_updates_bulk(batch["events"])
 
+                            logger.info(
+                                f"[BATCH_SUBMISSION_COMPLETE] Bulk API processing completed",
+                                extra={"batch_type": batch_type.value}
+                            )
+
                             # Clear the batch for next cycle
                             await batch_accumulator.submit_batch(batch_type)
+                            logger.info(
+                                f"[BATCH_CLEARED] Batch cleared for next cycle",
+                                extra={"batch_type": batch_type.value}
+                            )
+                        else:
+                            logger.warning(
+                                f"[BATCH_RETRIEVAL_ERROR] Batch marked ready but not found on retrieval",
+                                extra={"batch_type": batch_type.value}
+                            )
 
                     except Exception as e:
                         logger.error(
-                            f"Failed to process accumulated batch: {str(e)}",
+                            f"[BATCH_PROCESSING_FAILED] Failed to process accumulated batch: {str(e)}",
                             exc_info=True,
-                            extra={"batch_type": batch_type.value}
+                            extra={
+                                "batch_type": batch_type.value,
+                                "error": str(e)
+                            }
                         )
                         # Mark current event as failed
                         failed_event_ids.append(stripe_event.id)
@@ -243,9 +388,12 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
     Raises:
         SalesforceAPIException: If bulk processing fails
     """
-    logger.info(
-        f"Processing customer updates via Bulk API",
-        extra={"event_count": len(events)}
+    logger.critical(
+        f"[BULK_API_TRANSFORM_START] Processing {len(events)} customer updates via Bulk API 2.0",
+        extra={
+            "event_count": len(events),
+            "stripe_api_version": "v1"
+        }
     )
 
     # Transform Stripe events to Salesforce records
@@ -276,28 +424,71 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
             salesforce_records.append(salesforce_customer)
 
             logger.debug(
-                f"Transformed customer event to Salesforce record",
+                f"[RECORD_TRANSFORM] Transformed customer event to Salesforce record",
                 extra={
                     "event_id": event.id,
-                    "customer_id": customer_data.get("id")
+                    "customer_id": customer_data.get("id"),
+                    "fields_count": len(salesforce_customer)
                 }
             )
 
         except Exception as e:
             logger.error(
-                f"Failed to transform event: {str(e)}",
-                exc_info=True
+                f"[TRANSFORM_ERROR] Failed to transform event: {str(e)}",
+                exc_info=True,
+                extra={"event": event_dict}
             )
             continue
 
+    logger.critical(
+        f"[BULK_API_TRANSFORM_COMPLETE] Transformation complete - {len(salesforce_records)} records ready",
+        extra={
+            "input_events": len(events),
+            "output_records": len(salesforce_records),
+            "transformed_rate": f"{(len(salesforce_records)/len(events)*100):.1f}%" if events else "0%"
+        }
+    )
+
+    # Deduplicate records by Stripe_Customer_ID__c, keeping only the latest version
+    # This prevents "DUPLICATE_VALUE" errors when the same customer appears multiple times in a batch
+    records_by_id = {}
+    for record in salesforce_records:
+        customer_id = record.get("Stripe_Customer_ID__c")
+        if customer_id:
+            records_by_id[customer_id] = record  # Last occurrence wins (most recent update)
+
+    salesforce_records = list(records_by_id.values())
+
+    if len(salesforce_records) < len(events):
+        dedup_count = len(events) - len(salesforce_records)
+        logger.info(
+            f"[BULK_API_DEDUPLICATION] Removed duplicate customer records",
+            extra={
+                "original_count": len(events),
+                "deduplicated_count": len(salesforce_records),
+                "duplicates_removed": dedup_count
+            }
+        )
+
     if not salesforce_records:
-        logger.warning("No valid records to process")
+        logger.warning("[BULK_API_ERROR] No valid records to process - aborting Bulk API submission")
         return
 
     # Submit to Bulk API
     bulk_service = get_bulk_api_service()
 
     try:
+        logger.critical(
+            f"[BULK_API_JOB_CREATE] Creating Bulk API job for Stripe_Customer__c upsert",
+            extra={
+                "object_name": "Stripe_Customer__c",
+                "operation": "upsert",
+                "external_id_field": "Stripe_Customer_ID__c",
+                "record_count": len(salesforce_records),
+                "wait_for_completion": True
+            }
+        )
+
         result = await bulk_service.upsert_records(
             object_name="Stripe_Customer__c",
             records=salesforce_records,
@@ -313,27 +504,38 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
         records_processed = status.get("numberRecordsProcessed", 0)
         records_failed = status.get("numberRecordsFailed", 0)
 
-        logger.info(
-            f"Bulk API job completed",
+        logger.critical(
+            f"[BULK_API_JOB_COMPLETED] Bulk API job completed successfully!",
             extra={
                 "job_id": job_id,
+                "job_state": status.get("state", "unknown"),
+                "records_submitted": len(salesforce_records),
                 "records_processed": records_processed,
                 "records_failed": records_failed,
-                "success_rate": f"{(records_processed / len(salesforce_records) * 100):.1f}%"
+                "success_rate": f"{(records_processed / len(salesforce_records) * 100):.1f}%" if salesforce_records else "0%",
+                "salesforce_instance": status.get("object", "unknown")
             }
         )
 
         # Log failures
         failed_results = [r for r in results if not r.get("success")]
-        for failed in failed_results:
-            logger.error(
-                f"Record failed in bulk job",
+        if failed_results:
+            logger.warning(
+                f"[BULK_API_FAILURES] {len(failed_results)} records failed in bulk job",
                 extra={
                     "job_id": job_id,
-                    "record": failed,
-                    "error": failed.get("error")
+                    "failed_count": len(failed_results)
                 }
             )
+            for idx, failed in enumerate(failed_results[:5]):  # Log first 5 failures
+                logger.error(
+                    f"[BULK_API_FAILURE_DETAIL] Record #{idx+1} failed in bulk job",
+                    extra={
+                        "job_id": job_id,
+                        "record": failed,
+                        "error": failed.get("error", "Unknown error")
+                    }
+                )
 
         # Raise exception if any records failed (will trigger SQS retry)
         if records_failed > 0:
@@ -343,9 +545,12 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
 
     except Exception as e:
         logger.error(
-            f"Bulk API processing failed: {str(e)}",
+            f"[BULK_API_ERROR] Bulk API processing failed: {str(e)}",
             exc_info=True,
-            extra={"record_count": len(salesforce_records)}
+            extra={
+                "record_count": len(salesforce_records),
+                "error_type": type(e).__name__
+            }
         )
         raise
 
@@ -376,8 +581,9 @@ if __name__ == "__main__":
     }
 
     class MockContext:
-        request_id = "local-test"
+        aws_request_id = "local-test"
         function_name = "bulk-processor-test"
+        memory_limit_in_mb = 1024
 
     result = lambda_handler(test_event, MockContext())
     print(f"Result: {result}")

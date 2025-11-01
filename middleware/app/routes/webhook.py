@@ -138,7 +138,7 @@ async def process_event_background(stripe_event):
 
         # Route event to appropriate handler
         event_router = get_event_router()
-        result = await event_router.route_event(stripe_event)
+        result = await event_router.route_event(stripe_event.model_dump(mode="json"))
 
         logger.info(
             f"Background event processing completed",

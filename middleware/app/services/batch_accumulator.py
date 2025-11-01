@@ -138,14 +138,19 @@ class BatchAccumulator:
                 window_age >= self.time_threshold
             )
 
-            logger.info(
-                f"Event added to batch",
+            logger.critical(
+                f"[BATCH_ACCUMULATOR_ADD] Event added to batch accumulator",
                 extra={
                     "batch_type": batch_type_str,
                     "window_id": window_id,
                     "record_count": record_count,
-                    "window_age_seconds": window_age,
-                    "batch_ready": batch_ready
+                    "window_age_seconds": round(window_age, 1),
+                    "batch_ready": batch_ready,
+                    "size_threshold": self.size_threshold,
+                    "time_threshold": self.time_threshold,
+                    "size_progress": f"{record_count}/{self.size_threshold}",
+                    "time_progress": f"{round(window_age, 1)}/{self.time_threshold}s",
+                    "trigger_reason": "size" if record_count >= self.size_threshold else ("time" if window_age >= self.time_threshold else "not_ready")
                 }
             )
 
