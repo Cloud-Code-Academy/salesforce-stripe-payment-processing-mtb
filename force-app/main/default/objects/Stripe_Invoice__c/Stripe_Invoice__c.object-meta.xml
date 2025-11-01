@@ -152,7 +152,11 @@
     <enableSearch>true</enableSearch>
     <enableSharing>true</enableSharing>
     <enableStreamingApi>true</enableStreamingApi>
+<<<<<<< HEAD
     <externalSharingModel>ControlledByParent</externalSharingModel>
+=======
+    <externalSharingModel>Private</externalSharingModel>
+>>>>>>> 27ae771 (add: invoice management)
     <label>Stripe Invoice</label>
     <nameField>
         <displayFormat>INV-{000000}</displayFormat>
@@ -162,6 +166,10 @@
     </nameField>
     <pluralLabel>Stripe Invoices</pluralLabel>
     <searchLayouts></searchLayouts>
+<<<<<<< HEAD
     <sharingModel>ControlledByParent</sharingModel>
+=======
+    <sharingModel>ReadWrite</sharingModel>
+>>>>>>> 27ae771 (add: invoice management)
     <visibility>Public</visibility>
 </CustomObject>

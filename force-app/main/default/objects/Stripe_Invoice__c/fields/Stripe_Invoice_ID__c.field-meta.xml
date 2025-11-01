@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Stripe_Invoice_ID__c</fullName>
+<<<<<<< HEAD
     <caseSensitive>false</caseSensitive>
+=======
+>>>>>>> 27ae771 (add: invoice management)
     <externalId>true</externalId>
     <label>Stripe Invoice ID</label>
     <length>255</length>

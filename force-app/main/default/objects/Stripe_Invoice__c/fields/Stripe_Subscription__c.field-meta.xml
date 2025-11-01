@@ -1,14 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Stripe_Subscription__c</fullName>
+<<<<<<< HEAD
+=======
+    <deleteConstraint>SetNull</deleteConstraint>
+>>>>>>> 27ae771 (add: invoice management)
     <label>Stripe Subscription</label>
     <referenceTo>Stripe_Subscription__c</referenceTo>
     <relationshipLabel>Stripe Invoices</relationshipLabel>
     <relationshipName>Stripe_Invoices</relationshipName>
+<<<<<<< HEAD
     <relationshipOrder>0</relationshipOrder>
     <reparentableMasterDetail>false</reparentableMasterDetail>
     <trackHistory>true</trackHistory>
     <trackTrending>false</trackTrending>
     <type>MasterDetail</type>
     <writeRequiresMasterRead>false</writeRequiresMasterRead>
+=======
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+>>>>>>> 27ae771 (add: invoice management)
 </CustomField>
