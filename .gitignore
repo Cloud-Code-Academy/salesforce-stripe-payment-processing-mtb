@@ -57,3 +57,6 @@ IlluminatedCloud/
 
 # Middleware
 /middleware/.aws-sam
+
+# Apex scripts
+/scripts/

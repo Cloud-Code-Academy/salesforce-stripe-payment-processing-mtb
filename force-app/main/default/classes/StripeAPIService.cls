@@ -20,7 +20,7 @@ public with sharing class StripeAPIService {
         String endPoint = API_NAMED_CREDENTIALS + CUSTOMER_ENDPOINT;
         String requestBody = 'name=' + EncodingUtil.urlEncode(customerWrapper.name, 'UTF-8') +
                                 '&email=' + EncodingUtil.urlEncode(customerWrapper.email, 'UTF-8') +
-                                (customerWrapper.phone != null ? ('&phone=' + EncodingUtil.urlEncode(customerWrapper.phone, 'UTF-8')) : '');
+                                (customerWrapper.phone != null ? '&phone=' + EncodingUtil.urlEncode(customerWrapper.phone, 'UTF-8') : '');
 
         // Use retry logic - creating a customer is idempotent
         HttpResponse res = makeCalloutWithRetry(endPoint, requestBody, true);
