@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from app.models.stripe_events import StripeEvent
-from app.models.salesforce_records import SalesforcePaymentTransaction
+from app.models.salesforce_records import SalesforcePaymentTransaction, SalesforceInvoice
 from app.services.salesforce_service import salesforce_service
 from app.utils.logging_config import get_logger
 from app.utils.exceptions import SalesforceAPIException
@@ -150,7 +150,7 @@ class PaymentHandler:
     async def handle_invoice_payment_succeeded(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle invoice.payment_succeeded webhook event from Stripe.
-        Creates a Payment_Transaction__c record for successful recurring subscription payments.
+        Creates a Stripe_Invoice__c record and Payment_Transaction__c record for successful recurring subscription payments.
         Updates subscription period dates and status to 'active'.
 
         This event fires when Stripe successfully charges a customer for their subscription renewal.
@@ -176,8 +176,9 @@ class PaymentHandler:
 
         Returns:
             Dictionary containing:
+                - invoice_id: Salesforce ID of created Stripe_Invoice__c
                 - transaction_id: Salesforce ID of created Payment_Transaction__c
-                - invoice_id: Stripe invoice ID
+                - invoice_stripe_id: Stripe invoice ID
                 - subscription_id: Stripe subscription ID
                 - amount: Payment amount in dollars
 
@@ -189,8 +190,9 @@ class PaymentHandler:
             >>> result = await handle_invoice_payment_succeeded(event)
             >>> print(result)
             {
+                "invoice_id": "a02xxx000000001",
                 "transaction_id": "a01xxx000000001",
-                "invoice_id": "in_1234567890",
+                "invoice_stripe_id": "in_1234567890",
                 "subscription_id": "sub_xxx",
                 "amount": 29.99
             }
@@ -202,16 +204,21 @@ class PaymentHandler:
 
         # Extract invoice data
         invoice_data = self._extract_invoice_data(invoice)
-        
+
         # Get Salesforce IDs for subscription and customer
         subscription_sf_id, stripe_customer_sf_id = await self._get_salesforce_ids(
-            invoice_data["subscription_id"], 
+            invoice_data["subscription_id"],
             invoice_data["customer_id"]
         )
 
-        # Create payment transaction
-        transaction_id = await self._create_payment_transaction(
+        # Create invoice record in Salesforce
+        invoice_sf_id = await self._create_invoice_record(
             invoice_data, subscription_sf_id, stripe_customer_sf_id
+        )
+
+        # Create payment transaction linked to invoice
+        transaction_id = await self._create_payment_transaction(
+            invoice_data, subscription_sf_id, stripe_customer_sf_id, invoice_sf_id
         )
 
         # Update subscription period if available
@@ -220,8 +227,9 @@ class PaymentHandler:
         )
 
         return {
+            "invoice_id": invoice_sf_id,
             "transaction_id": transaction_id,
-            "invoice_id": invoice_data["invoice_id"],
+            "invoice_stripe_id": invoice_data["invoice_id"],
             "subscription_id": invoice_data["subscription_id"],
             "amount": invoice_data["amount_paid"],
             "currency": invoice_data["currency"]
@@ -229,6 +237,17 @@ class PaymentHandler:
 
     def _extract_invoice_data(self, invoice: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and format invoice data for processing."""
+        # Extract line items
+        line_items = []
+        if invoice.get("lines", {}).get("data"):
+            for line in invoice["lines"]["data"]:
+                line_items.append({
+                    "id": line.get("id"),
+                    "price_id": line.get("price", {}).get("id"),
+                    "amount": line.get("amount", 0) / 100.0,
+                    "description": line.get("description")
+                })
+
         return {
             "invoice_id": invoice["id"],
             "subscription_id": invoice.get("subscription"),
@@ -237,7 +256,13 @@ class PaymentHandler:
             "amount_paid": invoice["amount_paid"] / 100.0,  # Convert cents to dollars
             "currency": invoice["currency"].upper(),
             "period_start": invoice.get("period_start"),
-            "period_end": invoice.get("period_end")
+            "period_end": invoice.get("period_end"),
+            "due_date": invoice.get("due_date"),
+            "tax_amount": invoice.get("tax", 0) / 100.0 if invoice.get("tax") else 0,
+            "discounts_applied": invoice.get("total_discount_amounts", [{}])[0].get("amount", 0) / 100.0 if invoice.get("total_discount_amounts") else 0,
+            "paid": invoice.get("paid", False),
+            "pdf_url": invoice.get("invoice_pdf"),
+            "line_items": line_items
         }
 
     async def _get_salesforce_ids(self, subscription_id: str, customer_id: str) -> tuple[Optional[str], Optional[str]]:
@@ -279,11 +304,63 @@ class PaymentHandler:
             logger.error(f"Failed to query subscription {subscription_id}: {str(e)}")
             return None, None
 
-    async def _create_payment_transaction(
-        self, 
-        invoice_data: Dict[str, Any], 
-        subscription_sf_id: Optional[str], 
+    async def _create_invoice_record(
+        self,
+        invoice_data: Dict[str, Any],
+        subscription_sf_id: Optional[str],
         stripe_customer_sf_id: Optional[str]
+    ) -> Optional[str]:
+        """Create Stripe_Invoice__c record in Salesforce."""
+        try:
+            # Format line items as JSON string
+            line_items_json = None
+            if invoice_data.get("line_items"):
+                import json
+                line_items_json = json.dumps(invoice_data["line_items"])
+
+            invoice_record = SalesforceInvoice(
+                Stripe_Invoice_ID__c=invoice_data["invoice_id"],
+                Stripe_Subscription__c=subscription_sf_id,
+                Stripe_Customer__c=stripe_customer_sf_id,
+                Line_Items__c=line_items_json,
+                Invoice_PDF_URL__c=invoice_data.get("pdf_url"),
+                Period_Start__c=datetime.fromtimestamp(
+                    invoice_data["period_start"]
+                ) if invoice_data.get("period_start") else None,
+                Period_End__c=datetime.fromtimestamp(
+                    invoice_data["period_end"]
+                ) if invoice_data.get("period_end") else None,
+                Due_Date__c=datetime.fromtimestamp(
+                    invoice_data["due_date"]
+                ) if invoice_data.get("due_date") else None,
+                Tax_Amount__c=invoice_data.get("tax_amount"),
+                Discounts_Applied__c=invoice_data.get("discounts_applied"),
+                Status__c="paid" if invoice_data.get("paid") else "open",
+                Dunning_Status__c="none"
+            )
+
+            result = await salesforce_service.upsert_record(
+                sobject="Stripe_Invoice__c",
+                external_id_field="Stripe_Invoice_ID__c",
+                external_id_value=invoice_data["invoice_id"],
+                record_data=invoice_record.model_dump(exclude_none=True)
+            )
+
+            invoice_sf_id = result.get("id")
+            logger.info(f"Invoice record created/updated: {invoice_sf_id} for Stripe invoice {invoice_data['invoice_id']}")
+            return invoice_sf_id
+
+        except Exception as e:
+            logger.error(f"Failed to create invoice record for {invoice_data['invoice_id']}: {str(e)}")
+            # Don't raise - invoice creation is secondary to payment processing
+            return None
+
+    async def _create_payment_transaction(
+        self,
+        invoice_data: Dict[str, Any],
+        subscription_sf_id: Optional[str],
+        stripe_customer_sf_id: Optional[str],
+        invoice_sf_id: Optional[str] = None
     ) -> str:
         """Create payment transaction record in Salesforce."""
         transaction_data = {
@@ -303,6 +380,10 @@ class PaymentHandler:
 
         if stripe_customer_sf_id:
             transaction_data["Stripe_Customer__c"] = stripe_customer_sf_id
+
+        # Link to invoice if available
+        if invoice_sf_id:
+            transaction_data["Stripe_Invoice__c"] = invoice_sf_id
 
         try:
             result = await salesforce_service.create_record(
@@ -336,7 +417,8 @@ class PaymentHandler:
     async def handle_invoice_payment_failed(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle invoice.payment_failed webhook event from Stripe.
-        Creates a failed Payment_Transaction__c record and updates subscription status to 'past_due'.
+        Creates a Stripe_Invoice__c record with dunning status and a failed Payment_Transaction__c record.
+        Updates subscription status to 'past_due'.
 
         This event fires when Stripe fails to charge a customer for their subscription renewal.
         Common reasons: insufficient funds, expired card, declined by bank.
@@ -364,8 +446,9 @@ class PaymentHandler:
 
         Returns:
             Dictionary containing:
+                - invoice_id: Salesforce ID of created Stripe_Invoice__c
                 - transaction_id: Salesforce ID of created Payment_Transaction__c
-                - invoice_id: Stripe invoice ID
+                - invoice_stripe_id: Stripe invoice ID
                 - subscription_id: Stripe subscription ID
                 - failure_reason: Human-readable failure message
                 - attempt_count: Number of payment attempts
@@ -374,6 +457,7 @@ class PaymentHandler:
             SalesforceAPIException: If Salesforce record creation/update fails
 
         Side Effects:
+            - Creates or updates Stripe_Invoice__c with dunning status
             - Updates Stripe_Subscription__c.Status__c to 'past_due'
             - Sets Stripe_Subscription__c.Sync_Status__c to 'Failed'
             - Stores error message in Stripe_Subscription__c.Error_Message__c
@@ -383,8 +467,9 @@ class PaymentHandler:
             >>> result = await handle_invoice_payment_failed(event)
             >>> print(result)
             {
+                "invoice_id": "a02xxx000000002",
                 "transaction_id": "a01xxx000000002",
-                "invoice_id": "in_1234567890",
+                "invoice_stripe_id": "in_1234567890",
                 "failure_reason": "[card_declined] Your card was declined"
             }
         """
@@ -395,16 +480,21 @@ class PaymentHandler:
 
         # Extract and format invoice data
         invoice_data = self._extract_failed_invoice_data(invoice)
-        
+
         # Get Salesforce IDs for subscription and customer
         subscription_sf_id, stripe_customer_sf_id = await self._get_salesforce_ids(
-            invoice_data["subscription_id"], 
+            invoice_data["subscription_id"],
             invoice_data["customer_id"]
         )
 
-        # Create failed payment transaction
-        transaction_id = await self._create_failed_payment_transaction(
+        # Create invoice record with dunning status
+        invoice_sf_id = await self._create_failed_invoice_record(
             invoice_data, subscription_sf_id, stripe_customer_sf_id
+        )
+
+        # Create failed payment transaction linked to invoice
+        transaction_id = await self._create_failed_payment_transaction(
+            invoice_data, subscription_sf_id, stripe_customer_sf_id, invoice_sf_id
         )
 
         # Update subscription status to past_due if needed
@@ -417,8 +507,9 @@ class PaymentHandler:
             )
 
         return {
+            "invoice_id": invoice_sf_id,
             "transaction_id": transaction_id,
-            "invoice_id": invoice_data["invoice_id"],
+            "invoice_stripe_id": invoice_data["invoice_id"],
             "subscription_id": invoice_data["subscription_id"],
             "failure_reason": invoice_data["failure_message"],
             "attempt_count": invoice_data["attempt_count"]
@@ -433,10 +524,23 @@ class PaymentHandler:
         amount_due = invoice["amount_due"] / 100.0
         currency = invoice["currency"].upper()
         attempt_count = invoice.get("attempt_count", 0)
+        period_start = invoice.get("period_start")
+        period_end = invoice.get("period_end")
+
+        # Extract line items
+        line_items = []
+        if invoice.get("lines", {}).get("data"):
+            for line in invoice["lines"]["data"]:
+                line_items.append({
+                    "id": line.get("id"),
+                    "price_id": line.get("price", {}).get("id"),
+                    "amount": line.get("amount", 0) / 100.0,
+                    "description": line.get("description")
+                })
 
         # Extract failure reason from last_payment_error
         failure_message = self._build_failure_message(invoice.get("last_payment_error"))
-        
+
         logger.error(f"Invoice payment failure: {failure_message} (Attempt {attempt_count})")
 
         return {
@@ -447,7 +551,10 @@ class PaymentHandler:
             "amount_due": amount_due,
             "currency": currency,
             "attempt_count": attempt_count,
-            "failure_message": failure_message
+            "failure_message": failure_message,
+            "period_start": period_start,
+            "period_end": period_end,
+            "line_items": line_items
         }
 
     def _build_failure_message(self, last_error: Optional[Dict[str, Any]]) -> str:
@@ -465,11 +572,62 @@ class PaymentHandler:
 
         return failure_message
 
-    async def _create_failed_payment_transaction(
-        self, 
-        invoice_data: Dict[str, Any], 
-        subscription_sf_id: Optional[str], 
+    async def _create_failed_invoice_record(
+        self,
+        invoice_data: Dict[str, Any],
+        subscription_sf_id: Optional[str],
         stripe_customer_sf_id: Optional[str]
+    ) -> Optional[str]:
+        """Create Stripe_Invoice__c record for failed invoice in Salesforce."""
+        try:
+            # Format line items as JSON string
+            line_items_json = None
+            if invoice_data.get("line_items"):
+                import json
+                line_items_json = json.dumps(invoice_data["line_items"])
+
+            # Determine dunning status based on attempt count
+            dunning_status = "trying" if invoice_data.get("attempt_count", 1) < 5 else "exhausted"
+
+            invoice_record = SalesforceInvoice(
+                Stripe_Invoice_ID__c=invoice_data["invoice_id"],
+                Stripe_Subscription__c=subscription_sf_id,
+                Stripe_Customer__c=stripe_customer_sf_id,
+                Line_Items__c=line_items_json,
+                Period_Start__c=datetime.fromtimestamp(
+                    invoice_data["period_start"]
+                ) if invoice_data.get("period_start") else None,
+                Period_End__c=datetime.fromtimestamp(
+                    invoice_data["period_end"]
+                ) if invoice_data.get("period_end") else None,
+                Tax_Amount__c=invoice_data.get("tax_amount"),
+                Discounts_Applied__c=invoice_data.get("discounts_applied"),
+                Status__c="open",
+                Dunning_Status__c=dunning_status
+            )
+
+            result = await salesforce_service.upsert_record(
+                sobject="Stripe_Invoice__c",
+                external_id_field="Stripe_Invoice_ID__c",
+                external_id_value=invoice_data["invoice_id"],
+                record_data=invoice_record.model_dump(exclude_none=True)
+            )
+
+            invoice_sf_id = result.get("id")
+            logger.info(f"Failed invoice record created/updated: {invoice_sf_id} with dunning status: {dunning_status}")
+            return invoice_sf_id
+
+        except Exception as e:
+            logger.error(f"Failed to create failed invoice record for {invoice_data['invoice_id']}: {str(e)}")
+            # Don't raise - invoice creation is secondary to payment processing
+            return None
+
+    async def _create_failed_payment_transaction(
+        self,
+        invoice_data: Dict[str, Any],
+        subscription_sf_id: Optional[str],
+        stripe_customer_sf_id: Optional[str],
+        invoice_sf_id: Optional[str] = None
     ) -> str:
         """Create failed payment transaction record in Salesforce."""
         transaction_data = {
@@ -490,6 +648,10 @@ class PaymentHandler:
 
         if stripe_customer_sf_id:
             transaction_data["Stripe_Customer__c"] = stripe_customer_sf_id
+
+        # Link to invoice if available
+        if invoice_sf_id:
+            transaction_data["Stripe_Invoice__c"] = invoice_sf_id
 
         try:
             result = await salesforce_service.create_record(
