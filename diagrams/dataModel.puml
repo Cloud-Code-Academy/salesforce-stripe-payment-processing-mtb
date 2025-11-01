@@ -5,6 +5,7 @@ title Class Diagram - Stripe Integration
 package Stripe{
     class Customer
     class Subscription
+    class Invoice
     class PaymentTransaction
 }
 
@@ -34,13 +35,34 @@ package Salesforce {
         - SyncStatus: Picklist
         - ErrorMessage: LongText
     }
+    class StripeInvoice {
+        - StripeInvoiceID: String (External ID)
+        - Amount: Currency
+        - LineItems: LongText (JSON)
+        - InvoicePDFURL: URL
+        - PeriodStart: DateTime
+        - PeriodEnd: DateTime
+        - DueDate: DateTime
+        - TaxAmount: Currency
+        - DiscountsApplied: Currency
+        - Status: Picklist
+        - DunningStatus: Picklist
+    }
     class StripePaymentTransaction {
         - StripePaymentIntentID: String (External ID)
+        - StripeInvoiceID: String
         - Amount: Currency
         - Currency: String
         - Status: Picklist
         - PaymentMethodType: String
         - TransactionDate: DateTime
+        - TransactionType: Picklist
+        - FailureReason: String
+    }
+    enum DunningStatus {
+        - none
+        - trying
+        - exhausted
     }
     class PricingPlan {
         - StripePriceID: String (External ID)
@@ -66,12 +88,17 @@ package Salesforce {
 
 Customer "1" -- "0..1" StripeCustomer : syncs to
 Subscription "1" -- "0..1" StripeSubscription : syncs to
+Invoice "1" -- "0..1" StripeInvoice : syncs to
 PaymentTransaction "1" -- "0..1" StripePaymentTransaction : syncs to
 
 Contact "1" --o "0..1" StripeCustomer : linked to
 StripeCustomer "1" --> "0..*" StripeSubscription : has
+StripeCustomer "1" --> "0..*" StripeInvoice : has
 StripeSubscription "1" --> "1" PricingPlan : contains
-StripeSubscription "1" <-- "0..*" StripePaymentTransaction : generates
+StripeSubscription "1" --> "0..*" StripeInvoice : generates
+StripeSubscription "1" <-- "0..*" StripePaymentTransaction : payment for
+StripeInvoice "1" --> "1" DunningStatus : has
+StripeInvoice "1" <-- "0..*" StripePaymentTransaction : paid by
 PricingPlan "1" --> "1" RecurrencyType : defines
 PricingPlan "1" --o "0..*" PricingTier : has
 
