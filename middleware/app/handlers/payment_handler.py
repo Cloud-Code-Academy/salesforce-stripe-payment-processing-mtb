@@ -306,7 +306,7 @@ class PaymentHandler:
 
         try:
             result = await salesforce_service.create_record(
-                sobject="Payment_Transaction__c",
+                sobject_type="Payment_Transaction__c",
                 record_data=transaction_data
             )
 
@@ -493,7 +493,7 @@ class PaymentHandler:
 
         try:
             result = await salesforce_service.create_record(
-                sobject="Payment_Transaction__c",
+                sobject_type="Payment_Transaction__c",
                 record_data=transaction_data
             )
 
