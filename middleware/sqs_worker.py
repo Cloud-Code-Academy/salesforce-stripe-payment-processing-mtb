@@ -18,6 +18,7 @@ from typing import Any, Dict, List
 from app.config import settings
 from app.handlers.event_router import EventRouter
 from app.services.dynamodb_service import dynamodb_service
+from app.services.sqs_service import sqs_service
 from app.utils.logging_config import get_logger, setup_logging
 
 # Setup logging for Lambda
@@ -49,7 +50,7 @@ async def process_event(event_data: Dict[str, Any]) -> Dict[str, Any]:
             await dynamodb_service.connect()
 
         # Route event to appropriate handler
-        router = EventRouter()
+        router = EventRouter(dynamodb_service, sqs_service)
         result = await router.route_event(event_data)
 
         logger.info(
