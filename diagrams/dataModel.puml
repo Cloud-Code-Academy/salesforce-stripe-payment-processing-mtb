@@ -10,6 +10,8 @@ package Stripe{
 
 package Salesforce {
     class Contact {
+        - Email: String
+        - Name: String
         - StripeCustomerID: String (External ID)
     }
     class StripeCustomer {

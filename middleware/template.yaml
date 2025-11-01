@@ -411,6 +411,12 @@ Resources:
       Timeout: 90  # Longer timeout for Salesforce API calls
       MemorySize: 512
       # ReservedConcurrentExecutions: 10  # Uncomment if you need to limit concurrency
+      Environment:
+        Variables:
+          STRIPE_API_KEY_ARN: !Ref StripeApiKeySecret
+          STRIPE_WEBHOOK_SECRET_ARN: !Ref StripeWebhookSecret
+          SALESFORCE_CLIENT_SECRET_ARN: !Ref SalesforceClientSecret
+          SALESFORCE_INSTANCE_URL: !Ref SalesforceInstanceUrl
       Policies:
         # Permission to receive messages from SQS
         - SQSPollerPolicy:
