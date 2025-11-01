@@ -651,7 +651,7 @@ While invoice records are created by the middleware via webhooks, Salesforce-sid
 - **StripeInvoiceTriggerHandler.cls** - Handler class following existing trigger pattern
 - **StripeInvoiceTriggerHelper.cls** - Helper class with business logic
 
-**Core Automation Capabilities (Phase 1 - Critical):**
+**Core Automation Capabilities:**
 
 1. **Revenue Rollup Calculations:**
    - Aggregate invoice amounts to parent Customer and Subscription records
@@ -670,8 +670,6 @@ While invoice records are created by the middleware via webhooks, Salesforce-sid
    - Track payment failure rate and days overdue average
    - Update `Stripe_Customer__c.Health_Score__c` (0-100 scale)
    - Flag customers with declining health trends
-
-**Recommended Automation (Phase 2 - High Priority):**
 
 4. **Churn Risk Detection:**
    - Flag customers with 3+ failed invoices in 6 months
