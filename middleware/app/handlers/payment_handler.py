@@ -322,6 +322,7 @@ class PaymentHandler:
                 Stripe_Invoice_ID__c=invoice_data["invoice_id"],
                 Stripe_Subscription__c=subscription_sf_id,
                 Stripe_Customer__c=stripe_customer_sf_id,
+                Amount__c=invoice_data.get("amount_paid"),
                 Line_Items__c=line_items_json,
                 Invoice_PDF_URL__c=invoice_data.get("pdf_url"),
                 Period_Start__c=datetime.fromtimestamp(
@@ -554,6 +555,8 @@ class PaymentHandler:
             "failure_message": failure_message,
             "period_start": period_start,
             "period_end": period_end,
+            "tax_amount": invoice.get("tax", 0) / 100.0 if invoice.get("tax") else 0,
+            "discounts_applied": invoice.get("total_discount_amounts", [{}])[0].get("amount", 0) / 100.0 if invoice.get("total_discount_amounts") else 0,
             "line_items": line_items
         }
 
@@ -593,6 +596,7 @@ class PaymentHandler:
                 Stripe_Invoice_ID__c=invoice_data["invoice_id"],
                 Stripe_Subscription__c=subscription_sf_id,
                 Stripe_Customer__c=stripe_customer_sf_id,
+                Amount__c=invoice_data.get("amount_due"),
                 Line_Items__c=line_items_json,
                 Period_Start__c=datetime.fromtimestamp(
                     invoice_data["period_start"]
