@@ -178,10 +178,10 @@ public with sharing class StripeAPIService {
         try {
             String endPoint = API_NAMED_CREDENTIALS + SESSION_ENDPOINT;
             String requestBody = 'customer=' + EncodingUtil.urlEncode(customerId, 'UTF-8') + 
-                                '&line_items[0][price]=' + EncodingUtil.urlEncode(priceId, 'UTF-8') +
-                                '&line_items[0][quantity]=' + String.valueOf(1) +
-                                '&mode=' + EncodingUtil.urlEncode('subscription', 'UTF-8') +
-                                '&success_url=' + EncodingUtil.urlEncode('https://example.com/success', 'UTF-8');
+                                 '&line_items[0][price]=' + EncodingUtil.urlEncode(priceId, 'UTF-8') +
+                                 '&line_items[0][quantity]=' + String.valueOf(1) +
+                                 '&mode=' + EncodingUtil.urlEncode('subscription', 'UTF-8') +
+                                 '&success_url=' + EncodingUtil.urlEncode('https://example.com/success', 'UTF-8');
             HttpResponse res = makeCallout(endPoint, requestBody);
             if (res.getStatusCode() == 200) {
                 stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody().toString(), StripeWrapper.class);
