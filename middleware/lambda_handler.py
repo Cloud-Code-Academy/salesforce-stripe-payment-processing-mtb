@@ -7,6 +7,7 @@ ASGI FastAPI application to AWS Lambda handler format.
 Mangum handles the translation between API Gateway events and FastAPI's ASGI interface.
 """
 
+import os
 from mangum import Mangum
 
 from app.main import app
@@ -33,6 +34,18 @@ def lambda_handler(event, context):
     Returns:
         API Gateway response format
     """
+    # Note: Lambda automatically sets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+    # with temporary credentials from the IAM role. This is normal and expected.
+    # Only warn if these look like test/invalid credentials
+    aws_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+    if aws_key and (aws_key == "test" or aws_key.startswith("AKIA")):
+        # AKIA prefix indicates long-term IAM user credentials (not temporary role credentials)
+        logger.warning(
+            "WARNING: Non-temporary AWS credentials detected in Lambda! "
+            f"Key prefix: {aws_key[:4]}... "
+            "Lambda should use temporary role credentials (starting with ASIA)."
+        )
+
     # Log Lambda invocation details
     logger.info(
         "Lambda invocation started",

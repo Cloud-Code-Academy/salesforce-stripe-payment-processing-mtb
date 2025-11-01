@@ -21,18 +21,37 @@ class SQSService:
     """AWS SQS queue operations service"""
 
     def __init__(self):
-        self.session = aioboto3.Session(
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            region_name=settings.aws_region,
-        )
+        # IMPORTANT: In Lambda, we should ALWAYS use the default credential chain
+        # Lambda sets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY automatically with IAM role credentials
+        # but we should let boto3 handle this internally, not pass them explicitly
+
+        if settings.is_lambda:
+            # In Lambda, ALWAYS use default credentials (IAM role)
+            # Do NOT pass credentials explicitly even if they exist
+            logger.info("Lambda environment detected - using IAM role credentials via default chain")
+            self.session = aioboto3.Session(region_name=settings.aws_region)
+        elif settings.aws_access_key_id and settings.aws_secret_access_key and settings.aws_access_key_id != "test":
+            # Only use explicit credentials for local development (non-test values)
+            logger.debug(f"Using explicit AWS credentials for local development. Key: {settings.aws_access_key_id[:4]}...")
+            self.session = aioboto3.Session(
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+                region_name=settings.aws_region,
+            )
+        else:
+            # Use default credentials (from ~/.aws/credentials or environment)
+            logger.debug("Using default AWS credentials from environment/config")
+            self.session = aioboto3.Session(region_name=settings.aws_region)
+
         self.queue_url = settings.sqs_queue_url
+        self.low_priority_queue_url = settings.low_priority_queue_url
 
     async def send_message(
         self,
         message_body: Dict[str, Any],
         message_attributes: Optional[Dict[str, Any]] = None,
         delay_seconds: int = 0,
+        queue_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Send a message to SQS queue.
@@ -41,6 +60,7 @@ class SQSService:
             message_body: Message body as dictionary (will be JSON serialized)
             message_attributes: Optional message attributes
             delay_seconds: Delay before message becomes available (0-900)
+            queue_url: Optional specific queue URL (defaults to main queue)
 
         Returns:
             SQS response with MessageId
@@ -48,8 +68,12 @@ class SQSService:
         Raises:
             QueueException: If send fails
         """
+        target_queue_url = queue_url or self.queue_url
+
         try:
-            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
+            # Only use endpoint_url for local development (LocalStack), not in Lambda
+            endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+            async with self.session.client("sqs", endpoint_url=endpoint_url) as sqs:
                 # Serialize message body to JSON
                 body = json.dumps(message_body)
 
@@ -63,7 +87,7 @@ class SQSService:
                         }
 
                 response = await sqs.send_message(
-                    QueueUrl=self.queue_url,
+                    QueueUrl=target_queue_url,
                     MessageBody=body,
                     MessageAttributes=attributes,
                     DelaySeconds=delay_seconds,
@@ -74,7 +98,7 @@ class SQSService:
                     f"Message sent to SQS successfully",
                     extra={
                         "message_id": message_id,
-                        "queue_url": self.queue_url,
+                        "queue_url": target_queue_url,
                     },
                 )
 
@@ -84,7 +108,7 @@ class SQSService:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             logger.error(
                 f"Failed to send message to SQS: {error_code}",
-                extra={"error": str(e), "queue_url": self.queue_url},
+                extra={"error": str(e), "queue_url": target_queue_url},
             )
             raise QueueException(
                 f"Failed to send message to queue: {error_code}",
@@ -115,7 +139,9 @@ class SQSService:
             QueueException: If receive fails
         """
         try:
-            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
+            # Only use endpoint_url for local development (LocalStack), not in Lambda
+            endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+            async with self.session.client("sqs", endpoint_url=endpoint_url) as sqs:
                 params = {
                     "QueueUrl": self.queue_url,
                     "MaxNumberOfMessages": min(max_messages, 10),
@@ -159,7 +185,9 @@ class SQSService:
             QueueException: If delete fails
         """
         try:
-            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
+            # Only use endpoint_url for local development (LocalStack), not in Lambda
+            endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+            async with self.session.client("sqs", endpoint_url=endpoint_url) as sqs:
                 await sqs.delete_message(
                     QueueUrl=self.queue_url,
                     ReceiptHandle=receipt_handle,
@@ -192,7 +220,9 @@ class SQSService:
             QueueException: If operation fails
         """
         try:
-            async with self.session.client("sqs", endpoint_url=settings.aws_endpoint_url) as sqs:
+            # Only use endpoint_url for local development (LocalStack), not in Lambda
+            endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+            async with self.session.client("sqs", endpoint_url=endpoint_url) as sqs:
                 response = await sqs.get_queue_attributes(
                     QueueUrl=self.queue_url,
                     AttributeNames=["All"],

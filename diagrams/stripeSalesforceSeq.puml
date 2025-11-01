@@ -1,0 +1,50 @@
+@startuml stripe-salesforce-sequence
+!theme plain
+skinparam sequenceMessageAlign center
+
+title Stripe Webhook Processing Flow (Priority-Based)
+
+actor "Stripe API" as Stripe
+participant "API Gateway" as APIGW
+participant "Lambda\n(Webhook Processor)" as Lambda
+database "DynamoDB\n(Idempotency)" as DynamoDB
+participant "Event Router" as Router
+queue "SQS Queue\n(Low Priority)" as SQS
+participant "Lambda\n(Batch Processor)" as BatchLambda
+participant "Salesforce\nREST API" as SFAPI
+participant "Salesforce\nBulk API" as BulkAPI
+
+== High Priority Event (invoice.payment_failed) ==
+Stripe -> APIGW: POST /webhook/stripe
+APIGW -> Lambda: Invoke
+Lambda -> DynamoDB: Check if event_id exists
+DynamoDB --> Lambda: Not found (new event)
+Lambda -> Router: Route event
+Router -> Router: Determine priority = HIGH
+Router -> SFAPI: Create Payment_Transaction__c\n(immediate processing)
+SFAPI --> Router: Success
+Router --> Lambda: {status: "success", priority: "high"}
+Lambda --> APIGW: 200 OK
+APIGW --> Stripe: Webhook acknowledged
+
+== Low Priority Event (customer.updated) ==
+Stripe -> APIGW: POST /webhook/stripe
+APIGW -> Lambda: Invoke
+Lambda -> DynamoDB: Check if event_id exists
+DynamoDB --> Lambda: Not found (new event)
+Lambda -> Router: Route event
+Router -> Router: Determine priority = LOW
+Router -> SQS: Send message
+SQS --> Router: Message ID
+Router --> Lambda: {status: "queued", priority: "low"}
+Lambda --> APIGW: 200 OK
+APIGW --> Stripe: Webhook acknowledged
+
+== Batch Processing (Every 5 minutes) ==
+SQS -> BatchLambda: Poll messages (200 max)
+BatchLambda -> BatchLambda: Accumulate events
+BatchLambda -> BulkAPI: Bulk upsert (200 records)
+BulkAPI --> BatchLambda: Batch job ID
+BatchLambda -> SQS: Delete processed messages
+
+@enduml

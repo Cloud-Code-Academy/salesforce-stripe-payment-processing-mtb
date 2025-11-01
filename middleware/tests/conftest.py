@@ -181,8 +181,8 @@ def mock_valid_stripe_signature(stripe_webhook_secret):
 
 
 @pytest.fixture
-def mock_redis_service():
-    """Mock Redis service"""
+def mock_dynamodb_service():
+    """Mock DynamoDB service"""
     mock = AsyncMock()
     mock.get.return_value = None
     mock.set.return_value = True

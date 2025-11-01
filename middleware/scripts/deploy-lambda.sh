@@ -113,21 +113,66 @@ echo ""
 print_info "All prerequisites met!"
 echo ""
 
-# Prompt for sensitive parameters
-print_warning "You will be prompted for sensitive configuration values."
-print_info "These values will be stored in AWS Secrets Manager (encrypted)."
-echo ""
+# Load configuration from .env file or prompt
+ENV_FILE=".env"
 
-read -p "Enter Stripe API Key (sk_test_...): " STRIPE_API_KEY
-read -p "Enter Stripe Webhook Secret (whsec_...): " STRIPE_WEBHOOK_SECRET
-read -p "Enter Salesforce Client ID: " SALESFORCE_CLIENT_ID
-read -sp "Enter Salesforce Client Secret: " SALESFORCE_CLIENT_SECRET
-echo ""
-read -p "Enter Salesforce Instance URL [https://login.salesforce.com]: " SALESFORCE_INSTANCE_URL
-SALESFORCE_INSTANCE_URL=${SALESFORCE_INSTANCE_URL:-https://login.salesforce.com}
+if [ -f "${ENV_FILE}" ]; then
+    print_info "Found .env file - loading configuration..."
+
+    # Source the .env file (safely)
+    set -a
+    source "${ENV_FILE}"
+    set +a
+
+    # Check if all required values are present
+    if [ -n "${STRIPE_API_KEY}" ] && [ -n "${STRIPE_WEBHOOK_SECRET}" ] && \
+       [ -n "${SALESFORCE_CLIENT_ID}" ] && [ -n "${SALESFORCE_CLIENT_SECRET}" ] && \
+       [ -n "${SALESFORCE_INSTANCE_URL}" ]; then
+        print_success "Loaded all configuration values from .env file"
+        echo ""
+        print_info "Configuration:"
+        echo "  STRIPE_API_KEY: ${STRIPE_API_KEY:0:7}..."
+        echo "  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:0:7}..."
+        echo "  SALESFORCE_CLIENT_ID: ${SALESFORCE_CLIENT_ID:0:20}..."
+        echo "  SALESFORCE_CLIENT_SECRET: ${SALESFORCE_CLIENT_SECRET:0:7}..."
+        echo "  SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL}"
+        echo ""
+    else
+        print_warning ".env file exists but some values are missing"
+        print_info "Will prompt for missing values..."
+        echo ""
+    fi
+else
+    print_info "No .env file found - will prompt for configuration"
+    echo ""
+fi
+
+# Prompt for any missing values
+if [ -z "${STRIPE_API_KEY}" ]; then
+    read -p "Enter Stripe API Key (sk_test_...): " STRIPE_API_KEY
+fi
+
+if [ -z "${STRIPE_WEBHOOK_SECRET}" ]; then
+    read -p "Enter Stripe Webhook Secret (whsec_...): " STRIPE_WEBHOOK_SECRET
+fi
+
+if [ -z "${SALESFORCE_CLIENT_ID}" ]; then
+    read -p "Enter Salesforce Client ID: " SALESFORCE_CLIENT_ID
+fi
+
+if [ -z "${SALESFORCE_CLIENT_SECRET}" ]; then
+    read -sp "Enter Salesforce Client Secret: " SALESFORCE_CLIENT_SECRET
+    echo ""
+fi
+
+if [ -z "${SALESFORCE_INSTANCE_URL}" ]; then
+    read -p "Enter Salesforce Instance URL [https://login.salesforce.com]: " SALESFORCE_INSTANCE_URL
+    SALESFORCE_INSTANCE_URL=${SALESFORCE_INSTANCE_URL:-https://login.salesforce.com}
+fi
 
 echo ""
 print_info "Configuration captured successfully!"
+print_info "These values will be stored in AWS Secrets Manager (encrypted)."
 print_info "DynamoDB table will be created automatically - no additional setup needed!"
 echo ""
 
@@ -201,16 +246,46 @@ WEBHOOK_URL=$(aws cloudformation describe-stacks \
     --query 'Stacks[0].Outputs[?OutputKey==`WebhookUrl`].OutputValue' \
     --output text)
 
+WEBHOOK_FUNCTION_ARN=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`WebhookFunctionArn`].OutputValue' \
+    --output text)
+
+SQS_WORKER_FUNCTION_ARN=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`SqsWorkerFunctionArn`].OutputValue' \
+    --output text)
+
+BULK_PROCESSOR_FUNCTION_ARN=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`BulkProcessorFunctionArn`].OutputValue' \
+    --output text)
+
 QUEUE_URL=$(aws cloudformation describe-stacks \
     --stack-name ${STACK_NAME} \
     --region ${AWS_REGION} \
     --query 'Stacks[0].Outputs[?OutputKey==`QueueUrl`].OutputValue' \
     --output text)
 
+LOW_PRIORITY_QUEUE_URL=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`LowPriorityQueueUrl`].OutputValue' \
+    --output text)
+
 DLQ_URL=$(aws cloudformation describe-stacks \
     --stack-name ${STACK_NAME} \
     --region ${AWS_REGION} \
     --query 'Stacks[0].Outputs[?OutputKey==`DlqUrl`].OutputValue' \
+    --output text)
+
+BATCH_ACCUMULATOR_TABLE=$(aws cloudformation describe-stacks \
+    --stack-name ${STACK_NAME} \
+    --region ${AWS_REGION} \
+    --query 'Stacks[0].Outputs[?OutputKey==`BatchAccumulatorTableName`].OutputValue' \
     --output text)
 
 # Display summary
@@ -222,14 +297,21 @@ print_success "Stack Name: ${STACK_NAME}"
 print_success "Region: ${AWS_REGION}"
 print_success "Environment: ${ENVIRONMENT}"
 echo ""
-print_info "Webhook URL (configure in Stripe):"
+print_info "🔗 Webhook URL (configure in Stripe):"
 echo "  ${WEBHOOK_URL}"
 echo ""
-print_info "SQS Queue URL:"
-echo "  ${QUEUE_URL}"
+print_info "⚡ Lambda Functions (3-tier architecture):"
+echo "  Webhook Receiver:  ${WEBHOOK_FUNCTION_ARN##*/}"
+echo "  SQS Worker:        ${SQS_WORKER_FUNCTION_ARN##*/}"
+echo "  Bulk Processor:    ${BULK_PROCESSOR_FUNCTION_ARN##*/}"
 echo ""
-print_info "Dead Letter Queue URL:"
-echo "  ${DLQ_URL}"
+print_info "📬 SQS Queues:"
+echo "  Main Queue (HIGH/MEDIUM):     ${QUEUE_URL##*/}"
+echo "  Low-Priority Queue (BULK):    ${LOW_PRIORITY_QUEUE_URL##*/}"
+echo "  Dead Letter Queue:            ${DLQ_URL##*/}"
+echo ""
+print_info "💾 DynamoDB Tables:"
+echo "  Batch Accumulator: ${BATCH_ACCUMULATOR_TABLE}"
 echo ""
 
 # Next steps
@@ -237,23 +319,35 @@ echo "╔═══════════════════════�
 echo "║                        Next Steps                              ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
-echo "1. Configure Stripe Webhook:"
+echo "1. Deploy CloudWatch Dashboard (recommended):"
+echo "   ./scripts/deploy-dashboard.sh ${STACK_NAME} ${AWS_REGION}"
+echo ""
+echo "2. Configure Stripe Webhook:"
 echo "   - Go to: https://dashboard.stripe.com/webhooks"
 echo "   - Click 'Add endpoint'"
 echo "   - Endpoint URL: ${WEBHOOK_URL}"
 echo "   - Select events: checkout.session.completed, payment_intent.succeeded, etc."
 echo ""
-echo "2. Test the webhook:"
+echo "3. Test the webhook:"
 echo "   stripe trigger payment_intent.succeeded"
 echo ""
-echo "3. Monitor logs:"
+echo "4. Monitor Lambda logs (all 3 functions):"
 echo "   sam logs --stack-name ${STACK_NAME} --tail"
 echo ""
-echo "4. View CloudWatch logs:"
-echo "   https://console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}#logsV2:log-groups"
+echo "5. View CloudWatch Dashboard:"
+echo "   https://console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}#dashboards:name=${STACK_NAME}"
 echo ""
-echo "5. Check SQS queue:"
+echo "6. Check health endpoint:"
+echo "   curl ${WEBHOOK_URL%/webhook/stripe}/health/ready"
+echo ""
+echo "7. View SQS queues:"
 echo "   https://console.aws.amazon.com/sqs/v2/home?region=${AWS_REGION}"
+echo ""
+echo "📊 Architecture Summary:"
+echo "   • Webhook Receiver → Signature verification, priority routing"
+echo "   • SQS Worker → HIGH/MEDIUM priority (REST API)"
+echo "   • Bulk Processor → LOW priority (Bulk API 2.0, sliding window)"
+echo "   • 13 CloudWatch Alarms → Comprehensive monitoring"
 echo ""
 
 print_success "Deployment complete! 🚀"

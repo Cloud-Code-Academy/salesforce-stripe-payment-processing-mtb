@@ -1,7 +1,7 @@
 """
 Salesforce OAuth 2.0 Authentication
 
-Implements OAuth 2.0 client credentials flow with token caching in Redis.
+Implements OAuth 2.0 client credentials flow with token caching in DynamoDB.
 Supports automatic token refresh on expiration.
 """
 
@@ -11,17 +11,18 @@ from typing import Dict, Optional
 import httpx
 
 from app.config import settings
-from app.services.redis_service import redis_service
+from app.services.dynamodb_service import dynamodb_service
 from app.utils.exceptions import SalesforceAuthException
 from app.utils.logging_config import get_logger
 from app.utils.retry import retry_async
 
 logger = get_logger(__name__)
 
-# Redis cache keys
-OAUTH_TOKEN_KEY = "salesforce:oauth:access_token"
-OAUTH_INSTANCE_URL_KEY = "salesforce:oauth:instance_url"
-OAUTH_TOKEN_EXPIRY_KEY = "salesforce:oauth:token_expiry"
+# DynamoDB cache keys and namespace
+OAUTH_NAMESPACE = "oauth"
+OAUTH_TOKEN_KEY = "access_token"
+OAUTH_INSTANCE_URL_KEY = "instance_url"
+OAUTH_TOKEN_EXPIRY_KEY = "token_expiry"
 
 
 class SalesforceOAuth:
@@ -79,13 +80,13 @@ class SalesforceOAuth:
             SalesforceAuthException: If instance URL not available
         """
         # Try to get from cache first
-        instance_url = await redis_service.get(OAUTH_INSTANCE_URL_KEY)
+        instance_url = await dynamodb_service.get(OAUTH_INSTANCE_URL_KEY, namespace=OAUTH_NAMESPACE)
         if instance_url:
             return instance_url
 
         # If not cached, authenticate to get it
         await self.get_access_token()
-        instance_url = await redis_service.get(OAUTH_INSTANCE_URL_KEY)
+        instance_url = await dynamodb_service.get(OAUTH_INSTANCE_URL_KEY, namespace=OAUTH_NAMESPACE)
 
         if not instance_url:
             raise SalesforceAuthException("Failed to retrieve instance URL")
@@ -107,19 +108,31 @@ class SalesforceOAuth:
             SalesforceAuthException: If authentication fails
         """
         try:
-            # Prepare OAuth request data
-            data = {
-                "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
-            }
+            # Check which authentication method to use based on available credentials
+            if self.username and self.password:
+                # Use password flow (username-password flow)
+                # Note: Salesforce requires password + security token concatenated
+                data = {
+                    "grant_type": "password",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "username": self.username,
+                    "password": self.password  # This should be password + security_token
+                }
+            else:
+                # Fall back to client credentials (requires special setup in Salesforce)
+                data = {
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret
+                }
 
             logger.info(
                 "Authenticating with Salesforce",
                 extra={
                     "token_url": self.token_url,
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
+                    "client_id": self.client_id[:10] + "..." if self.client_id else None,
+                    "grant_type": data.get("grant_type"),
                 },
             )
 
@@ -193,8 +206,8 @@ class SalesforceOAuth:
         """
         try:
             # Get token and expiry from cache
-            token = await redis_service.get(OAUTH_TOKEN_KEY)
-            expiry_str = await redis_service.get(OAUTH_TOKEN_EXPIRY_KEY)
+            token = await dynamodb_service.get(OAUTH_TOKEN_KEY, namespace=OAUTH_NAMESPACE)
+            expiry_str = await dynamodb_service.get(OAUTH_TOKEN_EXPIRY_KEY, namespace=OAUTH_NAMESPACE)
 
             if not token or not expiry_str:
                 return None
@@ -216,7 +229,7 @@ class SalesforceOAuth:
 
     async def _cache_token(self, token_data: Dict[str, str]) -> None:
         """
-        Cache access token and metadata in Redis.
+        Cache access token and metadata in DynamoDB.
 
         Args:
             token_data: OAuth response data
@@ -230,17 +243,18 @@ class SalesforceOAuth:
             ttl = 5400  # 90 minutes
 
             # Store token
-            await redis_service.set(OAUTH_TOKEN_KEY, access_token, ttl=ttl)
+            await dynamodb_service.set(OAUTH_TOKEN_KEY, access_token, ttl_seconds=ttl, namespace=OAUTH_NAMESPACE)
 
             # Store instance URL
-            await redis_service.set(OAUTH_INSTANCE_URL_KEY, instance_url, ttl=ttl)
+            await dynamodb_service.set(OAUTH_INSTANCE_URL_KEY, instance_url, ttl_seconds=ttl, namespace=OAUTH_NAMESPACE)
 
             # Store expiry timestamp
             expiry = datetime.utcnow() + timedelta(seconds=ttl)
-            await redis_service.set(
+            await dynamodb_service.set(
                 OAUTH_TOKEN_EXPIRY_KEY,
                 expiry.isoformat(),
-                ttl=ttl,
+                ttl_seconds=ttl,
+                namespace=OAUTH_NAMESPACE,
             )
 
             logger.info(
@@ -265,7 +279,7 @@ class SalesforceOAuth:
         try:
             # Get token if not provided
             if not token:
-                token = await redis_service.get(OAUTH_TOKEN_KEY)
+                token = await dynamodb_service.get(OAUTH_TOKEN_KEY, namespace=OAUTH_NAMESPACE)
 
             if token:
                 # Revoke token with Salesforce
@@ -278,9 +292,9 @@ class SalesforceOAuth:
                 logger.info("Revoked Salesforce access token")
 
             # Clear cache
-            await redis_service.delete(OAUTH_TOKEN_KEY)
-            await redis_service.delete(OAUTH_INSTANCE_URL_KEY)
-            await redis_service.delete(OAUTH_TOKEN_EXPIRY_KEY)
+            await dynamodb_service.delete(OAUTH_TOKEN_KEY, namespace=OAUTH_NAMESPACE)
+            await dynamodb_service.delete(OAUTH_INSTANCE_URL_KEY, namespace=OAUTH_NAMESPACE)
+            await dynamodb_service.delete(OAUTH_TOKEN_EXPIRY_KEY, namespace=OAUTH_NAMESPACE)
 
         except Exception as e:
             logger.warning(f"Error revoking token: {e}")

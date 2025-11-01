@@ -2,9 +2,11 @@
 Health Check and Monitoring Endpoints
 
 Provides health status and dependency checks for the application.
+Checks all services including Bulk API and batch accumulator components.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException
@@ -13,12 +15,38 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.services.dynamodb_service import dynamodb_service
 from app.services.sqs_service import sqs_service
+from app.services.batch_accumulator import get_batch_accumulator
+from app.services.rate_limiter import get_rate_limiter
 from app.auth.salesforce_oauth import salesforce_oauth
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["health"])
+
+
+def decimal_to_json_serializable(obj: Any) -> Any:
+    """
+    Convert Decimal values from DynamoDB to JSON-serializable types.
+
+    Args:
+        obj: Object that may contain Decimal values
+
+    Returns:
+        JSON-serializable version of the object
+    """
+    if isinstance(obj, Decimal):
+        # Convert to int if it's a whole number, otherwise to float
+        if obj % 1 == 0:
+            return int(obj)
+        else:
+            return float(obj)
+    elif isinstance(obj, dict):
+        return {key: decimal_to_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [decimal_to_json_serializable(item) for item in obj]
+    else:
+        return obj
 
 
 @router.get("/health")
@@ -41,43 +69,105 @@ async def health_check():
 async def readiness_check():
     """
     Readiness check endpoint.
-    Verifies that all dependencies are available.
+    Verifies that all dependencies are available including:
+    - DynamoDB (cache, rate limiting, batch accumulator)
+    - SQS (main queue + low-priority queue)
+    - Salesforce (OAuth and API connectivity)
+    - Rate Limiter
+    - Batch Accumulator
     """
     status = "ready"
     dependencies: Dict[str, Any] = {}
     overall_healthy = True
 
-    # Check DynamoDB
+    # Check DynamoDB Cache
     try:
         # Test DynamoDB connectivity by checking if connected
         if not dynamodb_service.is_connected():
             await dynamodb_service.connect()
 
-        dependencies["dynamodb"] = {
+        dependencies["dynamodb_cache"] = {
             "status": "healthy",
             "connected": dynamodb_service.is_connected(),
             "table_name": settings.dynamodb_table_name,
         }
     except Exception as e:
-        dependencies["dynamodb"] = {
+        dependencies["dynamodb_cache"] = {
             "status": "unhealthy",
             "connected": False,
             "error": str(e),
         }
         overall_healthy = False
 
-    # Check SQS
+    # Check Batch Accumulator (DynamoDB)
     try:
-        attributes = await sqs_service.get_queue_attributes()
-        dependencies["sqs"] = {
+        batch_accumulator = get_batch_accumulator()
+        stats = await batch_accumulator.get_batch_stats()
+        dependencies["batch_accumulator"] = {
             "status": "healthy",
-            "queue_url": sqs_service.queue_url,
-            "approximate_messages": attributes.get(
-                "ApproximateNumberOfMessages", "unknown"
-            ),
+            "table_name": batch_accumulator.table_name,
+            "active_batches": len(stats.get("batches", {})),
+            "stats": decimal_to_json_serializable(stats),
         }
     except Exception as e:
-        dependencies["sqs"] = {
+        dependencies["batch_accumulator"] = {
+            "status": "unhealthy",
+            "error": str(e),
+        }
+        overall_healthy = False
+
+    # Check Main SQS Queue
+    try:
+        attributes = await sqs_service.get_queue_attributes()
+        dependencies["sqs_main_queue"] = {
+            "status": "healthy",
+            "queue_url": sqs_service.queue_url,
+            "approximate_messages": decimal_to_json_serializable(
+                attributes.get("ApproximateNumberOfMessages", "unknown")
+            ),
+            "type": "main (HIGH/MEDIUM priority)",
+        }
+    except Exception as e:
+        dependencies["sqs_main_queue"] = {
+            "status": "unhealthy",
+            "error": str(e),
+        }
+        overall_healthy = False
+
+    # Check Low-Priority SQS Queue
+    try:
+        # Create temporary client to check low-priority queue
+        import aioboto3
+        # In Lambda, always use default credential chain (IAM role)
+        if settings.is_lambda:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        elif settings.aws_access_key_id and settings.aws_secret_access_key and settings.aws_access_key_id != "test":
+            session = aioboto3.Session(
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+                region_name=settings.aws_region,
+            )
+        else:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        # Only use endpoint_url for local development (LocalStack), not in Lambda
+        endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+        async with session.client("sqs", endpoint_url=endpoint_url) as sqs_client:
+            low_priority_attributes = await sqs_client.get_queue_attributes(
+                QueueUrl=sqs_service.low_priority_queue_url,
+                AttributeNames=["ApproximateNumberOfMessages"],
+            )
+            dependencies["sqs_low_priority_queue"] = {
+                "status": "healthy",
+                "queue_url": sqs_service.low_priority_queue_url,
+                "approximate_messages": decimal_to_json_serializable(
+                    low_priority_attributes.get("Attributes", {}).get(
+                        "ApproximateNumberOfMessages", "unknown"
+                    )
+                ),
+                "type": "low-priority (Bulk API)",
+            }
+    except Exception as e:
+        dependencies["sqs_low_priority_queue"] = {
             "status": "unhealthy",
             "error": str(e),
         }
@@ -88,15 +178,31 @@ async def readiness_check():
         # Try to get cached token or authenticate
         await salesforce_oauth.get_access_token()
         instance_url = await salesforce_oauth.get_instance_url()
-        dependencies["salesforce"] = {
+        dependencies["salesforce_oauth"] = {
             "status": "healthy",
             "authenticated": True,
             "instance_url": instance_url,
         }
     except Exception as e:
-        dependencies["salesforce"] = {
+        dependencies["salesforce_oauth"] = {
             "status": "unhealthy",
             "authenticated": False,
+            "error": str(e),
+        }
+        overall_healthy = False
+
+    # Check Rate Limiter (DynamoDB connectivity)
+    try:
+        rate_limiter = get_rate_limiter()
+        # Just check if it's initialized (actual check happens via DynamoDB service)
+        dependencies["rate_limiter"] = {
+            "status": "healthy",
+            "service": "initialized",
+            "tiers": ["per-second", "per-minute", "per-day"],
+        }
+    except Exception as e:
+        dependencies["rate_limiter"] = {
+            "status": "unhealthy",
             "error": str(e),
         }
         overall_healthy = False
@@ -108,11 +214,16 @@ async def readiness_check():
 
     return JSONResponse(
         status_code=status_code,
-        content={
+        content=decimal_to_json_serializable({
             "status": status,
             "timestamp": datetime.utcnow().isoformat(),
             "dependencies": dependencies,
-        },
+            "summary": {
+                "total_checks": len(dependencies),
+                "healthy": sum(1 for d in dependencies.values() if d.get("status") == "healthy"),
+                "unhealthy": sum(1 for d in dependencies.values() if d.get("status") == "unhealthy"),
+            },
+        }),
     )
 
 
@@ -134,12 +245,41 @@ async def liveness_check():
 @router.get("/metrics")
 async def metrics():
     """
-    Basic metrics endpoint.
-    Returns application metrics and queue status.
+    Comprehensive metrics endpoint.
+    Returns application metrics including:
+    - Queue status (main + low-priority)
+    - Batch accumulator statistics
+    - Rate limiter status
+    - Overall system health
     """
     try:
-        # Get SQS queue metrics
-        attributes = await sqs_service.get_queue_attributes()
+        # Get Main SQS queue metrics
+        main_queue_attributes = await sqs_service.get_queue_attributes()
+
+        # Get Low-Priority SQS queue metrics
+        import aioboto3
+        # In Lambda, always use default credential chain (IAM role)
+        if settings.is_lambda:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        elif settings.aws_access_key_id and settings.aws_secret_access_key and settings.aws_access_key_id != "test":
+            session = aioboto3.Session(
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+                region_name=settings.aws_region,
+            )
+        else:
+            session = aioboto3.Session(region_name=settings.aws_region)
+        # Only use endpoint_url for local development (LocalStack), not in Lambda
+        endpoint_url = settings.aws_endpoint_url if not settings.is_lambda else None
+        async with session.client("sqs", endpoint_url=endpoint_url) as sqs_client:
+            low_priority_attributes = await sqs_client.get_queue_attributes(
+                QueueUrl=sqs_service.low_priority_queue_url,
+                AttributeNames=["All"],
+            )
+
+        # Get batch accumulator stats
+        batch_accumulator = get_batch_accumulator()
+        batch_stats = await batch_accumulator.get_batch_stats()
 
         metrics_data = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -148,22 +288,53 @@ async def metrics():
                 "version": settings.app_version,
                 "environment": settings.environment,
             },
-            "queue": {
-                "url": sqs_service.queue_url,
-                "approximate_messages": int(
-                    attributes.get("ApproximateNumberOfMessages", 0)
-                ),
-                "approximate_messages_not_visible": int(
-                    attributes.get("ApproximateNumberOfMessagesNotVisible", 0)
-                ),
-                "approximate_messages_delayed": int(
-                    attributes.get("ApproximateNumberOfMessagesDelayed", 0)
-                ),
+            "queues": {
+                "main_queue": {
+                    "url": sqs_service.queue_url,
+                    "type": "HIGH/MEDIUM priority (REST API)",
+                    "approximate_messages": int(
+                        main_queue_attributes.get("ApproximateNumberOfMessages", 0)
+                    ),
+                    "approximate_messages_not_visible": int(
+                        main_queue_attributes.get("ApproximateNumberOfMessagesNotVisible", 0)
+                    ),
+                    "approximate_messages_delayed": int(
+                        main_queue_attributes.get("ApproximateNumberOfMessagesDelayed", 0)
+                    ),
+                },
+                "low_priority_queue": {
+                    "url": sqs_service.low_priority_queue_url,
+                    "type": "LOW priority (Bulk API)",
+                    "approximate_messages": int(
+                        low_priority_attributes.get("Attributes", {}).get("ApproximateNumberOfMessages", 0)
+                    ),
+                    "approximate_messages_not_visible": int(
+                        low_priority_attributes.get("Attributes", {}).get("ApproximateNumberOfMessagesNotVisible", 0)
+                    ),
+                    "approximate_messages_delayed": int(
+                        low_priority_attributes.get("Attributes", {}).get("ApproximateNumberOfMessagesDelayed", 0)
+                    ),
+                },
+            },
+            "batch_accumulator": {
+                "table_name": batch_accumulator.table_name,
+                "size_threshold": batch_accumulator.size_threshold,
+                "time_threshold_seconds": batch_accumulator.time_threshold,
+                "active_batches": len(batch_stats.get("batches", {})),
+                "batches": batch_stats.get("batches", {}),
+            },
+            "rate_limiter": {
+                "status": "enabled",
+                "limits": {
+                    "per_second": 10,
+                    "per_minute": 250,
+                    "per_day": 15000,
+                },
             },
         }
 
         return JSONResponse(status_code=200, content=metrics_data)
 
     except Exception as e:
-        logger.error(f"Error retrieving metrics: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve metrics")
+        logger.error(f"Error retrieving metrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {str(e)}")

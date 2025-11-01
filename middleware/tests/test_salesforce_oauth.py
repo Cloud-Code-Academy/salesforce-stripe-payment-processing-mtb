@@ -13,7 +13,7 @@ from app.utils.exceptions import SalesforceAuthException
 
 
 @pytest.mark.asyncio
-async def test_get_access_token_success(mock_redis_service):
+async def test_get_access_token_success(mock_dynamodb_service):
     """Test successful token acquisition"""
 
     mock_response = AsyncMock()
@@ -24,26 +24,26 @@ async def test_get_access_token_success(mock_redis_service):
         "token_type": "Bearer",
     }
 
-    with patch("app.auth.salesforce_oauth.redis_service", mock_redis_service), patch(
+    with patch("app.auth.salesforce_oauth.dynamodb_service", mock_dynamodb_service), patch(
         "app.auth.salesforce_oauth.httpx.AsyncClient.post", return_value=mock_response
     ):
-        mock_redis_service.get.return_value = None  # No cached token
+        mock_dynamodb_service.get.return_value = None  # No cached token
 
         token = await salesforce_oauth.get_access_token()
 
         assert token == "test_token_123"
         # Verify token was cached
-        mock_redis_service.set.assert_called()
+        mock_dynamodb_service.set.assert_called()
 
 
 @pytest.mark.asyncio
-async def test_get_cached_token(mock_redis_service):
+async def test_get_cached_token(mock_dynamodb_service):
     """Test using cached token"""
 
     future_time = datetime.utcnow() + timedelta(hours=1)
 
-    with patch("app.auth.salesforce_oauth.redis_service", mock_redis_service):
-        mock_redis_service.get.side_effect = [
+    with patch("app.auth.salesforce_oauth.dynamodb_service", mock_dynamodb_service):
+        mock_dynamodb_service.get.side_effect = [
             "cached_token_123",
             future_time.isoformat(),
         ]
@@ -54,7 +54,7 @@ async def test_get_cached_token(mock_redis_service):
 
 
 @pytest.mark.asyncio
-async def test_token_refresh_on_expiry(mock_redis_service):
+async def test_token_refresh_on_expiry(mock_dynamodb_service):
     """Test token refresh when cached token is expired"""
 
     past_time = datetime.utcnow() - timedelta(minutes=1)
@@ -66,11 +66,11 @@ async def test_token_refresh_on_expiry(mock_redis_service):
         "instance_url": "https://test.salesforce.com",
     }
 
-    with patch("app.auth.salesforce_oauth.redis_service", mock_redis_service), patch(
+    with patch("app.auth.salesforce_oauth.dynamodb_service", mock_dynamodb_service), patch(
         "app.auth.salesforce_oauth.httpx.AsyncClient.post", return_value=mock_response
     ):
         # Return expired token
-        mock_redis_service.get.side_effect = [
+        mock_dynamodb_service.get.side_effect = [
             "old_token",
             past_time.isoformat(),
         ]
@@ -81,7 +81,7 @@ async def test_token_refresh_on_expiry(mock_redis_service):
 
 
 @pytest.mark.asyncio
-async def test_authentication_failure(mock_redis_service):
+async def test_authentication_failure(mock_dynamodb_service):
     """Test handling of authentication failure"""
 
     mock_response = AsyncMock()
@@ -91,17 +91,17 @@ async def test_authentication_failure(mock_redis_service):
         "error_description": "authentication failure",
     }
 
-    with patch("app.auth.salesforce_oauth.redis_service", mock_redis_service), patch(
+    with patch("app.auth.salesforce_oauth.dynamodb_service", mock_dynamodb_service), patch(
         "app.auth.salesforce_oauth.httpx.AsyncClient.post", return_value=mock_response
     ):
-        mock_redis_service.get.return_value = None
+        mock_dynamodb_service.get.return_value = None
 
         with pytest.raises(SalesforceAuthException):
             await salesforce_oauth.get_access_token()
 
 
 @pytest.mark.asyncio
-async def test_force_token_refresh(mock_redis_service):
+async def test_force_token_refresh(mock_dynamodb_service):
     """Test forcing token refresh even with valid cached token"""
 
     mock_response = AsyncMock()
@@ -111,7 +111,7 @@ async def test_force_token_refresh(mock_redis_service):
         "instance_url": "https://test.salesforce.com",
     }
 
-    with patch("app.auth.salesforce_oauth.redis_service", mock_redis_service), patch(
+    with patch("app.auth.salesforce_oauth.dynamodb_service", mock_dynamodb_service), patch(
         "app.auth.salesforce_oauth.httpx.AsyncClient.post", return_value=mock_response
     ):
         token = await salesforce_oauth.get_access_token(force_refresh=True)

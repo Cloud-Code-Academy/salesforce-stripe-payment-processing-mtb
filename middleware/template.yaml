@@ -22,10 +22,14 @@ Globals:
 
         # AWS Resources (auto-populated by CloudFormation)
         SQS_QUEUE_URL: !Ref StripeEventQueue
+        LOW_PRIORITY_QUEUE_URL: !Ref LowPriorityEventQueue
         # Note: AWS_REGION is automatically provided by Lambda runtime
 
         # DynamoDB table for caching (replaces Redis)
         DYNAMODB_TABLE_NAME: !Ref CacheTable
+
+        # DynamoDB table for batch accumulation
+        BATCH_ACCUMULATOR_TABLE_NAME: !Ref BatchAccumulatorTable
 
         # Secrets Manager references (values stored securely)
         STRIPE_WEBHOOK_SECRET_ARN: !Ref StripeWebhookSecret
@@ -139,6 +143,23 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # Low-priority event queue for batch processing via Bulk API
+  LowPriorityEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-low-priority-events
+      VisibilityTimeout: 300  # 5 minutes (for bulk processing)
+      MessageRetentionPeriod: 345600  # 4 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt StripeEventDLQ.Arn
+        maxReceiveCount: 3  # Retry 3 times before sending to DLQ
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Low-priority events for Bulk API processing
+
   # ==========================================
   # DYNAMODB TABLE - Token Caching & Storage
   # ==========================================
@@ -169,6 +190,127 @@ Resources:
         - Key: Purpose
           Value: Token caching and temporary storage
 
+  # Rate Limit Table - Per Second
+  RateLimitPerSecondTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-second
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Purpose
+          Value: RateLimiting
+        - Key: Tier
+          Value: PerSecond
+
+  # Rate Limit Table - Per Minute
+  RateLimitPerMinuteTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-minute
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Purpose
+          Value: RateLimiting
+        - Key: Tier
+          Value: PerMinute
+
+  # Rate Limit Table - Per Day
+  RateLimitPerDayTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-day
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Purpose
+          Value: RateLimiting
+        - Key: Tier
+          Value: PerDay
+
+  # Batch Accumulator Table - Event batching for Bulk API processing
+  BatchAccumulatorTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AWS::StackName}-batch-accumulator
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: BatchAccumulation
+
+  # Stripe Event Idempotency Table - Prevent duplicate event processing
+  StripeEventIdempotencyTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: stripe-event-idempotency
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: EventIdempotency
+
   # ==========================================
   # LAMBDA FUNCTION - Webhook Receiver
   # ==========================================
@@ -194,12 +336,24 @@ Resources:
           # Other direct environment variables the Lambda needs
           SALESFORCE_INSTANCE_URL: !Ref SalesforceInstanceUrl
       Policies:
-        # Permission to send messages to SQS
+        # Permission to send messages to SQS queues
         - SQSSendMessagePolicy:
             QueueName: !GetAtt StripeEventQueue.QueueName
-        # Permission to read/write DynamoDB
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt LowPriorityEventQueue.QueueName
+        # Permission to read/write DynamoDB (multiple tables)
         - DynamoDBCrudPolicy:
             TableName: !Ref CacheTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BatchAccumulatorTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerSecondTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerMinuteTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerDayTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StripeEventIdempotencyTable
         # Permission to read secrets
         - Statement:
           - Effect: Allow
@@ -209,6 +363,15 @@ Resources:
               - !Ref StripeApiKeySecret
               - !Ref StripeWebhookSecret
               - !Ref SalesforceClientSecret
+        # Permission to get queue attributes (for health checks)
+        - Statement:
+          - Effect: Allow
+            Action:
+              - sqs:GetQueueAttributes
+              - sqs:GetQueueUrl
+            Resource:
+              - !GetAtt StripeEventQueue.Arn
+              - !GetAtt LowPriorityEventQueue.Arn
       Events:
         # Catch-all route - let FastAPI handle all routing
         CatchAll:
@@ -252,9 +415,19 @@ Resources:
         # Permission to receive messages from SQS
         - SQSPollerPolicy:
             QueueName: !GetAtt StripeEventQueue.QueueName
-        # Permission to read/write DynamoDB
+        # Permission to read/write DynamoDB (multiple tables)
         - DynamoDBCrudPolicy:
             TableName: !Ref CacheTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BatchAccumulatorTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerSecondTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerMinuteTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerDayTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StripeEventIdempotencyTable
         # Permission to read secrets
         - Statement:
           - Effect: Allow
@@ -264,6 +437,15 @@ Resources:
               - !Ref StripeApiKeySecret
               - !Ref StripeWebhookSecret
               - !Ref SalesforceClientSecret
+        # Permission to get queue attributes (for monitoring)
+        - Statement:
+          - Effect: Allow
+            Action:
+              - sqs:GetQueueAttributes
+              - sqs:GetQueueUrl
+            Resource:
+              - !GetAtt StripeEventQueue.Arn
+              - !GetAtt LowPriorityEventQueue.Arn
       Events:
         # Triggered by SQS messages
         SqsEvent:
@@ -282,6 +464,83 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /aws/lambda/${SqsWorkerFunction}
+      RetentionInDays: 7
+
+  # ==========================================
+  # LAMBDA FUNCTION - Bulk Processor
+  # ==========================================
+
+  BulkProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-bulk-processor
+      CodeUri: .
+      Handler: bulk_processor.lambda_handler
+      Description: Processes low-priority events in batches using Salesforce Bulk API 2.0
+      Timeout: 300  # 5 minutes for bulk operations
+      MemorySize: 1024  # More memory for batch processing
+      # ReservedConcurrentExecutions: 2  # Limit concurrency for bulk operations
+      Environment:
+        Variables:
+          # Add missing environment variables for Bulk Processor
+          STRIPE_API_KEY_ARN: !Ref StripeApiKeySecret
+          STRIPE_WEBHOOK_SECRET_ARN: !Ref StripeWebhookSecret
+          SALESFORCE_CLIENT_SECRET_ARN: !Ref SalesforceClientSecret
+          SALESFORCE_INSTANCE_URL: !Ref SalesforceInstanceUrl
+      Policies:
+        # Permission to receive messages from low-priority SQS queue
+        - SQSPollerPolicy:
+            QueueName: !GetAtt LowPriorityEventQueue.QueueName
+        # Permission to read/write DynamoDB (multiple tables)
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CacheTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BatchAccumulatorTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerSecondTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerMinuteTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitPerDayTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StripeEventIdempotencyTable
+        # Permission to read secrets
+        - Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource:
+              - !Ref StripeApiKeySecret
+              - !Ref StripeWebhookSecret
+              - !Ref SalesforceClientSecret
+        # Permission to get queue attributes (for monitoring)
+        - Statement:
+          - Effect: Allow
+            Action:
+              - sqs:GetQueueAttributes
+              - sqs:GetQueueUrl
+            Resource:
+              - !GetAtt StripeEventQueue.Arn
+              - !GetAtt LowPriorityEventQueue.Arn
+      Events:
+        # Triggered by low-priority SQS messages
+        LowPrioritySqsEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt LowPriorityEventQueue.Arn
+            BatchSize: 10  # Process up to 10 messages at once
+            MaximumBatchingWindowInSeconds: 30  # Wait up to 30s to accumulate messages
+            FunctionResponseTypes:
+              - ReportBatchItemFailures  # Enable partial batch failures
+      Tags:
+        Environment: !Ref Environment
+        Purpose: Bulk API Processing
+
+  # CloudWatch Log Group for Bulk Processor Function
+  BulkProcessorFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BulkProcessorFunction}
       RetentionInDays: 7
 
   # ==========================================
@@ -362,6 +621,238 @@ Resources:
           Value: !GetAtt StripeEventQueue.QueueName
       TreatMissingData: notBreaching
 
+  # ==========================================
+  # ADDITIONAL ALARMS - 3-Lambda Architecture
+  # ==========================================
+
+  # SQS Worker Lambda Errors
+  SqsWorkerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-sqs-worker-errors
+      AlarmDescription: Alert when SQS worker function has high error rate
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SqsWorkerFunction
+      TreatMissingData: notBreaching
+
+  # Bulk Processor Lambda Errors
+  BulkProcessorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-bulk-processor-errors
+      AlarmDescription: Alert when bulk processor function has high error rate
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BulkProcessorFunction
+      TreatMissingData: notBreaching
+
+  # Low-Priority Queue Depth (Bulk API)
+  LowPriorityQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-low-priority-queue-depth
+      AlarmDescription: Alert when low-priority queue has too many pending messages
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 500
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt LowPriorityEventQueue.QueueName
+      TreatMissingData: notBreaching
+
+  # Lambda Duration - Webhook Receiver
+  WebhookDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-webhook-duration
+      AlarmDescription: Alert when webhook function is approaching timeout
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 8000  # 8 seconds (timeout is 10s)
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref WebhookFunction
+      TreatMissingData: notBreaching
+
+  # Lambda Duration - SQS Worker
+  SqsWorkerDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-sqs-worker-duration
+      AlarmDescription: Alert when SQS worker is approaching timeout
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 75000  # 75 seconds (timeout is 90s)
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SqsWorkerFunction
+      TreatMissingData: notBreaching
+
+  # Lambda Duration - Bulk Processor
+  BulkProcessorDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-bulk-processor-duration
+      AlarmDescription: Alert when bulk processor is approaching timeout
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 240000  # 240 seconds (timeout is 300s/5min)
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BulkProcessorFunction
+      TreatMissingData: notBreaching
+
+  # Lambda Throttles - All Functions
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-lambda-throttles
+      AlarmDescription: Alert when any Lambda function is being throttled
+      Metrics:
+        - Id: webhook_throttles
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Throttles
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref WebhookFunction
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: worker_throttles
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Throttles
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref SqsWorkerFunction
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: bulk_throttles
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Throttles
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref BulkProcessorFunction
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: total_throttles
+          Expression: webhook_throttles + worker_throttles + bulk_throttles
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  # API Gateway 5XX Errors
+  ApiGateway5XXAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-api-gateway-5xx
+      AlarmDescription: Alert when API Gateway has high 5XX error rate
+      MetricName: 5XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref WebhookHttpApi
+      TreatMissingData: notBreaching
+
+  # API Gateway 4XX Errors (unusually high)
+  ApiGateway4XXAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-api-gateway-4xx
+      AlarmDescription: Alert when API Gateway has unusually high 4XX error rate
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref WebhookHttpApi
+      TreatMissingData: notBreaching
+
+  # Old Messages in Queue (potential processing backlog)
+  OldMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-old-messages
+      AlarmDescription: Alert when messages are stuck in queue too long
+      MetricName: ApproximateAgeOfOldestMessage
+      Namespace: AWS/SQS
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 300  # 5 minutes
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt StripeEventQueue.QueueName
+      TreatMissingData: notBreaching
+
+  # Batch Accumulator Messages Aging
+  LowPriorityOldMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-low-priority-old-messages
+      AlarmDescription: Alert when low-priority messages are aging beyond batch window
+      MetricName: ApproximateAgeOfOldestMessage
+      Namespace: AWS/SQS
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 60  # 60 seconds (2x the 30s batch window)
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt LowPriorityEventQueue.QueueName
+      TreatMissingData: notBreaching
+
 # Outputs - Important values to reference after deployment
 Outputs:
   WebhookUrl:
@@ -399,3 +890,21 @@ Outputs:
     Value: !Ref WebhookHttpApi
     Export:
       Name: !Sub ${AWS::StackName}-ApiId
+
+  LowPriorityQueueUrl:
+    Description: Low-Priority SQS Queue URL (for Bulk API processing)
+    Value: !Ref LowPriorityEventQueue
+    Export:
+      Name: !Sub ${AWS::StackName}-LowPriorityQueueUrl
+
+  BulkProcessorFunctionArn:
+    Description: Bulk Processor Lambda Function ARN
+    Value: !GetAtt BulkProcessorFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-BulkProcessorFunctionArn
+
+  BatchAccumulatorTableName:
+    Description: Batch Accumulator DynamoDB Table Name
+    Value: !Ref BatchAccumulatorTable
+    Export:
+      Name: !Sub ${AWS::StackName}-BatchAccumulatorTableName

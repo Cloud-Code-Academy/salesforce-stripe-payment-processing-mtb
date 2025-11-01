@@ -14,10 +14,6 @@ pydantic-settings==2.6.0
 boto3==1.35.36
 aioboto3==13.2.0
 
-# Redis
-redis==5.2.0
-hiredis==3.0.0
-
 # Stripe
 stripe==11.1.0
 
