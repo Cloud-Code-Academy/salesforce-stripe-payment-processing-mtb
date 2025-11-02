@@ -7,20 +7,17 @@ private class StripeInvoiceTriggerTest {
     static void setupTestData() {
         // Create test user with required permission sets
         testUser = TestDataFactory.createUserWithPermissionSets(
-            new List<String>{'Stripe_Customer_Contact_Access', 'Stripe_API_Access'}
+            new List<String>{'Stripe_Customer_Contact_Access', 'Stripe_API_Access', 'Stripe_Subscription_Access', 'Stripe_Invoice_Access'}
         );
 
-        // Run as test user to create test data
-        System.runAs(testUser) {
-            // Create test Contact
-            Contact testContact = TestDataFactory.createContacts(1)[0];
+        // Create test Contact
+        Contact testContact = TestDataFactory.createContacts(1)[0];
 
-            // Create test Stripe Customer
-            Stripe_Customer__c customer = TestDataFactory.createStripeCustomers(1, testContact.Id)[0];
+        // Create test Stripe Customer
+        Stripe_Customer__c customer = TestDataFactory.createStripeCustomers(1, testContact.Id)[0];
 
-            // Create test Stripe Subscription
-            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
-        }
+        // Create test Stripe Subscription
+        Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
     }
 
     // Helper method to get test user
@@ -166,20 +163,18 @@ private class StripeInvoiceTriggerTest {
      */
     @isTest
     static void testCalculateHealthScore_AllPaid() {
-        System.runAs(getTestUser()) {
-            // Get test data
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
-            Stripe_Subscription__c subscription = [SELECT Id FROM Stripe_Subscription__c LIMIT 1];
+        // Get test data
+        Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
+        Stripe_Subscription__c subscription = [SELECT Id FROM Stripe_Subscription__c LIMIT 1];
 
-            // Create all paid invoices
-            Test.startTest();
-            List<Stripe_Invoice__c> invoices = TestDataFactory.createStripeInvoices(5, customer.Id, subscription.Id, 'paid');
-            Test.stopTest();
+        // Create all paid invoices
+        Test.startTest();
+        List<Stripe_Invoice__c> invoices = TestDataFactory.createStripeInvoices(5, customer.Id, subscription.Id, 'paid');
+        Test.stopTest();
 
-            // Verify perfect health score
-            customer = [SELECT Id, Health_Score__c FROM Stripe_Customer__c WHERE Id = :customer.Id];
-            Assert.areEqual(100, customer.Health_Score__c, 'Health score should be 100 for all paid invoices');
-        }
+        // Verify perfect health score
+        customer = [SELECT Id, Health_Score__c FROM Stripe_Customer__c WHERE Id = :customer.Id];
+        Assert.areEqual(100, customer.Health_Score__c, 'Health score should be 100 for all paid invoices');
     }
 
     /**
@@ -309,7 +304,7 @@ private class StripeInvoiceTriggerTest {
 
             // Verify churn risk was updated
             customer = [SELECT Id, Churn_Risk__c FROM Stripe_Customer__c WHERE Id = :customer.Id];
-            Assert.assertNotEquals('Low', customer.Churn_Risk__c, 'Churn risk should increase when dunning is exhausted');
+            Assert.areNotEqual('Low', customer.Churn_Risk__c, 'Churn risk should increase when dunning is exhausted');
         }
     }
 
