@@ -532,6 +532,13 @@ Resources:
             MaximumBatchingWindowInSeconds: 30  # Wait up to 30s to accumulate messages
             FunctionResponseTypes:
               - ReportBatchItemFailures  # Enable partial batch failures
+        # Triggered on a schedule to process accumulated batches
+        ScheduledBatchProcessing:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Description: Periodically process accumulated batches even when SQS queue is empty
+            Enabled: true
       Tags:
         Environment: !Ref Environment
         Purpose: Bulk API Processing

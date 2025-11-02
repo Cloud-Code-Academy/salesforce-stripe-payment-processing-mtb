@@ -43,20 +43,30 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     AWS Lambda handler for bulk processing of low-priority Stripe events.
 
+    Supports two event sources:
+    1. SQS: Triggered by messages in low-priority queue, processes new events
+    2. Scheduled: Triggered by CloudWatch Events on schedule, processes accumulated batches
+
     Args:
-        event: SQS event containing Stripe webhook events
+        event: Either SQS event or CloudWatch Events scheduled event
         context: Lambda context object
 
     Returns:
-        Response with batch item failures (for partial batch failures)
+        Response with batch item failures (for SQS) or status (for scheduled)
     """
     request_id = context.aws_request_id if context else "local"
+
+    # Detect event source
+    is_sqs_event = "Records" in event
+    is_scheduled_event = event.get("source") == "aws.events"
+    event_source = "sqs" if is_sqs_event else ("scheduled" if is_scheduled_event else "unknown")
 
     logger.info(
         f"[BULK_PROCESSOR_START] Lambda invocation received",
         extra={
             "request_id": request_id,
-            "record_count": len(event.get("Records", [])),
+            "event_source": event_source,
+            "record_count": len(event.get("Records", [])) if is_sqs_event else 0,
             "function_name": context.function_name if context else "local",
             "memory_limit": context.memory_limit_in_mb if context else "N/A"
         }
@@ -77,15 +87,25 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         f"[BULK_PROCESSOR_END] Lambda invocation completed",
         extra={
             "request_id": request_id,
-            "batch_item_failures": len(batch_item_failures),
+            "event_source": event_source,
+            "batch_item_failures": len(batch_item_failures) if is_sqs_event else 0,
             "status": "success" if len(batch_item_failures) == 0 else "partial_failure"
         }
     )
 
-    # Return batch item failures for SQS retry
-    return {
-        "batchItemFailures": batch_item_failures
-    }
+    # Return appropriate response based on event source
+    if is_sqs_event:
+        # SQS events require batchItemFailures for partial batch failure handling
+        return {
+            "batchItemFailures": batch_item_failures
+        }
+    else:
+        # Scheduled events don't require SQS failure response
+        return {
+            "status": "success",
+            "event_source": event_source,
+            "batches_processed": len(batch_item_failures) == 0
+        }
 
 
 async def process_ready_batches(batch_accumulator) -> None:
@@ -183,13 +203,26 @@ async def process_sqs_batch(event: Dict[str, Any], context: Any) -> List[Dict[st
     """
     records = event.get("Records", [])
 
-    logger.info(
-        f"[BATCH_PROCESSING_START] Processing SQS batch",
-        extra={
-            "record_count": len(records),
-            "event_keys": list(event.keys()) if isinstance(event, dict) else "not_a_dict"
-        }
-    )
+    # Detect if this is a scheduled invocation (no SQS records)
+    is_scheduled_invocation = not records and event.get("source") == "aws.events"
+
+    if is_scheduled_invocation:
+        logger.info(
+            f"[BATCH_PROCESSING_START] Processing scheduled batch check",
+            extra={
+                "record_count": 0,
+                "invocation_type": "scheduled",
+                "purpose": "Process accumulated batches from batch accumulator"
+            }
+        )
+    else:
+        logger.info(
+            f"[BATCH_PROCESSING_START] Processing SQS batch",
+            extra={
+                "record_count": len(records),
+                "event_keys": list(event.keys()) if isinstance(event, dict) else "not_a_dict"
+            }
+        )
 
     batch_accumulator = get_batch_accumulator()
     logger.debug(f"[BATCH_ACCUMULATOR] Initialized batch accumulator")
@@ -200,7 +233,12 @@ async def process_sqs_batch(event: Dict[str, Any], context: Any) -> List[Dict[st
 
     # If no SQS records, we're done after processing ready batches
     if not records:
-        logger.info("[BATCH_PROCESSING_INFO] No new SQS records, ready batches processed")
+        logger.info(
+            "[BATCH_PROCESSING_INFO] No new SQS records, ready batches processed",
+            extra={
+                "invocation_type": "scheduled" if is_scheduled_invocation else "sqs_empty"
+            }
+        )
         return []
 
     # Parse Stripe events from SQS messages
