@@ -420,6 +420,9 @@ Resources:
         # Permission to receive messages from SQS
         - SQSPollerPolicy:
             QueueName: !GetAtt StripeEventQueue.QueueName
+        # Permission to send messages to low-priority queue
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt LowPriorityEventQueue.QueueName
         # Permission to read/write DynamoDB (multiple tables)
         - DynamoDBCrudPolicy:
             TableName: !Ref CacheTable

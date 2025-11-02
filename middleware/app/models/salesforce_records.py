@@ -92,7 +92,6 @@ class SalesforceInvoice(BaseModel):
         None, description="Lookup to Stripe_Subscription__c (by External ID)"
     )
     Amount__c: Optional[float] = None
-    Currency__c: Optional[str] = None
     Status__c: Optional[
         Literal[
             "draft",
@@ -103,10 +102,10 @@ class SalesforceInvoice(BaseModel):
         ]
     ] = None
     Due_Date__c: Optional[datetime] = None
-    Created_Date__c: Optional[datetime] = None
-    Payment_Method__c: Optional[str] = None
-    Description__c: Optional[str] = None
-    Number__c: Optional[str] = None
+    Period_Start__c: Optional[datetime] = None
+    Period_End__c: Optional[datetime] = None
+    Discount_Applied__c: Optional[float] = None
+    Tax_Amount__c: Optional[float] = None
 
     class Config:
         json_schema_extra = {
@@ -115,9 +114,12 @@ class SalesforceInvoice(BaseModel):
                 "Stripe_Customer__c": "cus_ABC123",
                 "Stripe_Subscription__c": "sub_ABC123",
                 "Amount__c": 29.99,
-                "Currency__c": "USD",
                 "Status__c": "open",
-                "Created_Date__c": "2024-10-18T12:00:00Z",
+                "Due_Date__c": "2024-10-18T12:00:00Z",
+                "Period_Start__c": "2024-10-01T00:00:00Z",
+                "Period_End__c": "2024-10-31T23:59:59Z",
+                "Discount_Applied__c": 0.00,
+                "Tax_Amount__c": 0.00,
             }
         }
 
