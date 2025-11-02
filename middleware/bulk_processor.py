@@ -32,7 +32,7 @@ from collections import defaultdict
 from app.services.bulk_api_service import get_bulk_api_service
 from app.services.batch_accumulator import get_batch_accumulator, BatchType
 from app.models.stripe_events import StripeEvent
-from app.models.salesforce_records import SalesforceCustomer
+from app.models.salesforce_records import SalesforceCustomer, SalesforceContact
 from app.utils.logging_config import get_logger
 from app.utils.exceptions import SalesforceAPIException
 
@@ -397,7 +397,8 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
     )
 
     # Transform Stripe events to Salesforce records
-    salesforce_records = []
+    customer_records = []
+    contact_records = []
 
     for event_dict in events:
         try:
@@ -420,15 +421,41 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
 
             # Remove None values
             salesforce_customer = {k: v for k, v in salesforce_customer.items() if v is not None}
+            customer_records.append(salesforce_customer)
 
-            salesforce_records.append(salesforce_customer)
+            # Map to Salesforce Contact record
+            # Parse name into FirstName and LastName
+            customer_name = customer_data.get("name", "")
+            first_name = None
+            last_name = None
+
+            if customer_name:
+                name_parts = customer_name.strip().split(None, 1)  # Split on first whitespace
+                if len(name_parts) == 1:
+                    last_name = name_parts[0]
+                elif len(name_parts) >= 2:
+                    first_name = name_parts[0]
+                    last_name = name_parts[1]
+
+            salesforce_contact = {
+                "Stripe_Customer_ID__c": customer_data.get("id"),
+                "Email": customer_data.get("email"),
+                "FirstName": first_name,
+                "LastName": last_name or "Unknown",  # LastName is required on Contact
+                "Phone": customer_data.get("phone")
+            }
+
+            # Remove None values but keep LastName as it's required
+            salesforce_contact = {k: v for k, v in salesforce_contact.items() if v is not None}
+            contact_records.append(salesforce_contact)
 
             logger.debug(
-                f"[RECORD_TRANSFORM] Transformed customer event to Salesforce record",
+                f"[RECORD_TRANSFORM] Transformed customer event to Salesforce records",
                 extra={
                     "event_id": event.id,
                     "customer_id": customer_data.get("id"),
-                    "fields_count": len(salesforce_customer)
+                    "customer_fields": len(salesforce_customer),
+                    "contact_fields": len(salesforce_contact)
                 }
             )
 
@@ -441,42 +468,56 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
             continue
 
     logger.critical(
-        f"[BULK_API_TRANSFORM_COMPLETE] Transformation complete - {len(salesforce_records)} records ready",
+        f"[BULK_API_TRANSFORM_COMPLETE] Transformation complete - {len(customer_records)} customer and {len(contact_records)} contact records ready",
         extra={
             "input_events": len(events),
-            "output_records": len(salesforce_records),
-            "transformed_rate": f"{(len(salesforce_records)/len(events)*100):.1f}%" if events else "0%"
+            "customer_records": len(customer_records),
+            "contact_records": len(contact_records),
+            "customer_transform_rate": f"{(len(customer_records)/len(events)*100):.1f}%" if events else "0%",
+            "contact_transform_rate": f"{(len(contact_records)/len(events)*100):.1f}%" if events else "0%"
         }
     )
 
-    # Deduplicate records by Stripe_Customer_ID__c, keeping only the latest version
+    # Deduplicate customer records by Stripe_Customer_ID__c, keeping only the latest version
     # This prevents "DUPLICATE_VALUE" errors when the same customer appears multiple times in a batch
-    records_by_id = {}
-    for record in salesforce_records:
+    customer_by_id = {}
+    for record in customer_records:
         customer_id = record.get("Stripe_Customer_ID__c")
         if customer_id:
-            records_by_id[customer_id] = record  # Last occurrence wins (most recent update)
+            customer_by_id[customer_id] = record  # Last occurrence wins (most recent update)
 
-    salesforce_records = list(records_by_id.values())
+    customer_records = list(customer_by_id.values())
 
-    if len(salesforce_records) < len(events):
-        dedup_count = len(events) - len(salesforce_records)
+    # Deduplicate contact records by Stripe_Customer_ID__c
+    contact_by_id = {}
+    for record in contact_records:
+        customer_id = record.get("Stripe_Customer_ID__c")
+        if customer_id:
+            contact_by_id[customer_id] = record  # Last occurrence wins (most recent update)
+
+    contact_records = list(contact_by_id.values())
+
+    if len(customer_records) < len(events):
+        dedup_count = len(events) - len(customer_records)
         logger.info(
             f"[BULK_API_DEDUPLICATION] Removed duplicate customer records",
             extra={
                 "original_count": len(events),
-                "deduplicated_count": len(salesforce_records),
+                "deduplicated_count": len(customer_records),
                 "duplicates_removed": dedup_count
             }
         )
 
-    if not salesforce_records:
-        logger.warning("[BULK_API_ERROR] No valid records to process - aborting Bulk API submission")
+    if not customer_records:
+        logger.warning("[BULK_API_ERROR] No valid customer records to process - aborting Bulk API submission")
         return
 
     # Submit to Bulk API
     bulk_service = get_bulk_api_service()
+    customer_failed = False
+    contact_failed = False
 
+    # Step 1: Submit Stripe_Customer__c records
     try:
         logger.critical(
             f"[BULK_API_JOB_CREATE] Creating Bulk API job for Stripe_Customer__c upsert",
@@ -484,14 +525,14 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
                 "object_name": "Stripe_Customer__c",
                 "operation": "upsert",
                 "external_id_field": "Stripe_Customer_ID__c",
-                "record_count": len(salesforce_records),
+                "record_count": len(customer_records),
                 "wait_for_completion": True
             }
         )
 
         result = await bulk_service.upsert_records(
             object_name="Stripe_Customer__c",
-            records=salesforce_records,
+            records=customer_records,
             external_id_field="Stripe_Customer_ID__c",
             wait_for_completion=True  # Wait for results
         )
@@ -505,14 +546,14 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
         records_failed = status.get("numberRecordsFailed", 0)
 
         logger.critical(
-            f"[BULK_API_JOB_COMPLETED] Bulk API job completed successfully!",
+            f"[BULK_API_JOB_COMPLETED] Stripe_Customer__c bulk job completed!",
             extra={
                 "job_id": job_id,
                 "job_state": status.get("state", "unknown"),
-                "records_submitted": len(salesforce_records),
+                "records_submitted": len(customer_records),
                 "records_processed": records_processed,
                 "records_failed": records_failed,
-                "success_rate": f"{(records_processed / len(salesforce_records) * 100):.1f}%" if salesforce_records else "0%",
+                "success_rate": f"{(records_processed / len(customer_records) * 100):.1f}%" if customer_records else "0%",
                 "salesforce_instance": status.get("object", "unknown")
             }
         )
@@ -521,7 +562,7 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
         failed_results = [r for r in results if not r.get("success")]
         if failed_results:
             logger.warning(
-                f"[BULK_API_FAILURES] {len(failed_results)} records failed in bulk job",
+                f"[BULK_API_FAILURES] {len(failed_results)} records failed in Stripe_Customer__c bulk job",
                 extra={
                     "job_id": job_id,
                     "failed_count": len(failed_results)
@@ -537,22 +578,125 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
                     }
                 )
 
-        # Raise exception if any records failed (will trigger SQS retry)
+        # Mark as failed if any records failed
         if records_failed > 0:
-            raise SalesforceAPIException(
-                f"Bulk API job had {records_failed} failed records out of {len(salesforce_records)}"
+            customer_failed = True
+            logger.error(
+                f"[BULK_API_CUSTOMER_FAILED] Stripe_Customer__c job had failures",
+                extra={
+                    "job_id": job_id,
+                    "failed_count": records_failed,
+                    "total_records": len(customer_records)
+                }
             )
 
     except Exception as e:
         logger.error(
-            f"[BULK_API_ERROR] Bulk API processing failed: {str(e)}",
+            f"[BULK_API_ERROR] Stripe_Customer__c processing failed: {str(e)}",
             exc_info=True,
             extra={
-                "record_count": len(salesforce_records),
+                "record_count": len(customer_records),
                 "error_type": type(e).__name__
             }
         )
-        raise
+        customer_failed = True
+
+    # Step 2: Submit Contact records (even if customer submission had issues)
+    if contact_records:
+        try:
+            logger.critical(
+                f"[BULK_API_JOB_CREATE] Creating Bulk API job for Contact upsert",
+                extra={
+                    "object_name": "Contact",
+                    "operation": "upsert",
+                    "external_id_field": "Stripe_Customer_ID__c",
+                    "record_count": len(contact_records),
+                    "wait_for_completion": True
+                }
+            )
+
+            result = await bulk_service.upsert_records(
+                object_name="Contact",
+                records=contact_records,
+                external_id_field="Stripe_Customer_ID__c",
+                wait_for_completion=True  # Wait for results
+            )
+
+            job_id = result["job_id"]
+            status = result["status"]
+            results = result.get("results", [])
+
+            # Log summary
+            records_processed = status.get("numberRecordsProcessed", 0)
+            records_failed = status.get("numberRecordsFailed", 0)
+
+            logger.critical(
+                f"[BULK_API_JOB_COMPLETED] Contact bulk job completed!",
+                extra={
+                    "job_id": job_id,
+                    "job_state": status.get("state", "unknown"),
+                    "records_submitted": len(contact_records),
+                    "records_processed": records_processed,
+                    "records_failed": records_failed,
+                    "success_rate": f"{(records_processed / len(contact_records) * 100):.1f}%" if contact_records else "0%",
+                    "salesforce_instance": status.get("object", "unknown")
+                }
+            )
+
+            # Log failures
+            failed_results = [r for r in results if not r.get("success")]
+            if failed_results:
+                logger.warning(
+                    f"[BULK_API_FAILURES] {len(failed_results)} records failed in Contact bulk job",
+                    extra={
+                        "job_id": job_id,
+                        "failed_count": len(failed_results)
+                    }
+                )
+                for idx, failed in enumerate(failed_results[:5]):  # Log first 5 failures
+                    logger.error(
+                        f"[BULK_API_FAILURE_DETAIL] Contact record #{idx+1} failed in bulk job",
+                        extra={
+                            "job_id": job_id,
+                            "record": failed,
+                            "error": failed.get("error", "Unknown error")
+                        }
+                    )
+
+            # Mark as failed if any records failed
+            if records_failed > 0:
+                contact_failed = True
+                logger.error(
+                    f"[BULK_API_CONTACT_FAILED] Contact job had failures",
+                    extra={
+                        "job_id": job_id,
+                        "failed_count": records_failed,
+                        "total_records": len(contact_records)
+                    }
+                )
+
+        except Exception as e:
+            logger.error(
+                f"[BULK_API_ERROR] Contact processing failed: {str(e)}",
+                exc_info=True,
+                extra={
+                    "record_count": len(contact_records),
+                    "error_type": type(e).__name__
+                }
+            )
+            contact_failed = True
+
+    # Raise exception if customer submission failed (critical)
+    if customer_failed:
+        raise SalesforceAPIException(
+            f"Bulk API job(s) had failures: Customer records failed"
+        )
+
+    # Log warning if contact submission failed but customer succeeded
+    if contact_failed:
+        logger.warning(
+            f"[BULK_API_WARNING] Contact submission had failures but customer submission succeeded"
+        )
 
 
 # For local testing
