@@ -410,7 +410,6 @@ Resources:
       Description: Processes Stripe events from SQS and updates Salesforce
       Timeout: 90  # Longer timeout for Salesforce API calls
       MemorySize: 1024  # Increased for faster cold start initialization
-      ReservedConcurrentExecutions: 1  # Keep 1 instance warm for consistent performance
       Environment:
         Variables:
           STRIPE_API_KEY_ARN: !Ref StripeApiKeySecret

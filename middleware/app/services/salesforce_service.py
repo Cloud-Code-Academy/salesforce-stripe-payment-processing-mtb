@@ -33,7 +33,10 @@ class SalesforceService:
     """
     
     def __init__(self):
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        # Configure httpx with explicit limits to prevent Lambda event loop issues
+        # Max 1 connection to avoid connection pool contention
+        limits = httpx.Limits(max_connections=1, max_keepalive_connections=1)
+        self.http_client = httpx.AsyncClient(timeout=30.0, limits=limits)
         self.api_version = settings.salesforce_api_version
         self.rate_limiter = get_rate_limiter()
     
