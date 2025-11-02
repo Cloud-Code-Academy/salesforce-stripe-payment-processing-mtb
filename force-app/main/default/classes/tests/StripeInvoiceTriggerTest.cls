@@ -10,14 +10,16 @@ private class StripeInvoiceTriggerTest {
             new List<String>{'Stripe_Customer_Contact_Access', 'Stripe_API_Access', 'Stripe_Subscription_Access', 'Stripe_Invoice_Access'}
         );
 
-        // Create test Contact
-        Contact testContact = TestDataFactory.createContacts(1)[0];
-
-        // Create test Stripe Customer
-        Stripe_Customer__c customer = TestDataFactory.createStripeCustomers(1, testContact.Id)[0];
-
-        // Create test Stripe Subscription
-        Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+        System.runAs(testUser){
+            // Create test Contact
+            Contact testContact = TestDataFactory.createContacts(1)[0];
+    
+            // Create test Stripe Customer
+            Stripe_Customer__c customer = TestDataFactory.createStripeCustomers(1, testContact.Id)[0];
+    
+            // Create test Stripe Subscription
+            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+        }
     }
 
     // Helper method to get test user
