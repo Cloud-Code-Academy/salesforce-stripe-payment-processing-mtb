@@ -160,6 +160,46 @@ public with sharing class StripeAPIService {
         return (StripeWrapper)JSON.deserialize(res.getBody(), StripeWrapper.class);
     }
     /**
+     * @description Updates an existing customer in Stripe via API callout and returns the updated customer details.
+     *              Constructs a URL-encoded request body with customer details (name, email, phone), sends it to the
+     *              Stripe Customer API endpoint using PATCH method with automatic retry for transient errors, and parses
+     *              the response to extract the customer information. Throws StripeException with detailed error information on failure.
+     * @param customerWrapper Wrapper object containing customer information (name, email, phone)
+     * @param customerId The Stripe customer ID to update
+     * @return String The Stripe customer ID if successful
+     * @throws StripeException If the API call fails (includes specific subtype based on error)
+     */
+    public static String updateCustomer(StripeWrapper.CustomerWrapper customerWrapper, String customerId){
+        String endPoint = API_NAMED_CREDENTIALS + CUSTOMER_ENDPOINT + '/' + customerId;
+        String requestBody = '';
+
+        // Only include fields that are provided
+        if (customerWrapper.name != null) {
+            requestBody += 'name=' + EncodingUtil.urlEncode(customerWrapper.name, 'UTF-8');
+        }
+
+        if (customerWrapper.email != null) {
+            if (requestBody.length() > 0) {
+                requestBody += '&';
+            }
+            requestBody += 'email=' + EncodingUtil.urlEncode(customerWrapper.email, 'UTF-8');
+        }
+
+        if (customerWrapper.phone != null) {
+            if (requestBody.length() > 0) {
+                requestBody += '&';
+            }
+            requestBody += 'phone=' + EncodingUtil.urlEncode(customerWrapper.phone, 'UTF-8');
+        }
+
+        // Use retry logic - updating a customer is idempotent
+        HttpResponse res = makeCalloutWithRetry(endPoint, requestBody, true);
+
+        // Parse the successful response
+        StripeWrapper stripeResponse = (StripeWrapper)JSON.deserialize(res.getBody(), StripeWrapper.class);
+        return stripeResponse.id;
+    }
+    /**
      * @description Executes an HTTP POST callout to Stripe API and returns the response.
      *              Constructs and sends an HTTP request with URL-encoded content type to the specified endpoint,
      *              logs the response status and body for debugging, and handles exceptions. Always throws a

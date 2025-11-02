@@ -5,10 +5,8 @@ Handles incoming Stripe webhook events with signature verification,
 SQS queuing, and immediate 200 OK response.
 """
 
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
-
-from app.handlers.event_router import get_event_router
 from app.services.stripe_service import stripe_service
 from app.services.sqs_service import sqs_service
 from app.utils.exceptions import StripeSignatureException, StripeException
@@ -20,14 +18,14 @@ router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
 @router.post("/stripe")
-async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
+async def stripe_webhook(request: Request):
     """
     Stripe webhook endpoint.
 
     Verifies webhook signature, pushes event to SQS queue,
     and returns 200 OK immediately to stay within Stripe's timeout.
 
-    Background task processes the event after response is sent.
+    Events are processed asynchronously by the SQS worker Lambda.
     """
     correlation_id = set_correlation_id()
 
@@ -71,9 +69,6 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
             },
         )
 
-        # Process event in background (after 200 response sent)
-        background_tasks.add_task(process_event_background, stripe_event)
-
         # Return 200 OK immediately
         return JSONResponse(
             status_code=200,
@@ -114,47 +109,3 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
             },
         )
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-async def process_event_background(stripe_event):
-    """
-    Background task to process event after 200 response sent.
-    This ensures Stripe receives acknowledgment within timeout.
-
-    Args:
-        stripe_event: Validated Stripe event
-    """
-    try:
-        # Check if event type is supported
-        if not stripe_service.is_event_type_supported(stripe_event.type):
-            logger.info(
-                f"Event type not supported, skipping processing",
-                extra={
-                    "event_id": stripe_event.id,
-                    "event_type": stripe_event.type,
-                },
-            )
-            return
-
-        # Route event to appropriate handler
-        event_router = get_event_router()
-        result = await event_router.route_event(stripe_event.model_dump(mode="json"))
-
-        logger.info(
-            f"Background event processing completed",
-            extra={
-                "event_id": stripe_event.id,
-                "result": result,
-            },
-        )
-
-    except Exception as e:
-        logger.error(
-            f"Error in background event processing: {e}",
-            extra={
-                "event_id": stripe_event.id,
-                "event_type": stripe_event.type,
-                "error": str(e),
-            },
-        )
-        # Error logged but not raised to avoid background task failure
