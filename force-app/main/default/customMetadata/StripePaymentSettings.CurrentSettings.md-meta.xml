@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <label>Current Settings</label>
+    <protected>false</protected>
+    <values>
+        <field>CheckoutSessionMode__c</field>
+        <value xsi:type="xsd:string">subscription</value>
+    </values>
+    <values>
+        <field>DefaultMethodCardToken__c</field>
+        <value xsi:type="xsd:string">tok_visa</value>
+    </values>
+    <values>
+        <field>DefaultMethodType__c</field>
+        <value xsi:type="xsd:string">card</value>
+    </values>
+    <values>
+        <field>MaxRetries__c</field>
+        <value xsi:type="xsd:double">5.0</value>
+    </values>
+    <values>
+        <field>Successful_URL__c</field>
+        <value xsi:type="xsd:string">https://example.com/success</value>
+    </values>
+</CustomMetadata>

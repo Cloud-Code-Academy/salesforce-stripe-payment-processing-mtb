@@ -12,7 +12,7 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
     private String calloutType;
     private Id recordId;
     private String currencyName;
-    private String reccuringInterval;
+    private String recurringInterval;
     private Decimal amount;
     private String product;
     private String priceId;
@@ -43,14 +43,14 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
      *              product and its associated recurring price.
      * @param recordId Salesforce record ID of the Pricing_Plan__c record to update after creation
      * @param currencyName Currency code for the price (e.g., 'USD', 'EUR')
-     * @param reccuringInterval Billing interval for recurring price (e.g., 'month', 'year')
+     * @param recurringInterval Billing interval for recurring price (e.g., 'month', 'year')
      * @param amount Price amount in the smallest currency unit (e.g., cents)
      * @param product Product name/description
      */
     public StripeCalloutQueueable(
         Id recordId,
         String currencyName,
-        String reccuringInterval,
+        String recurringInterval,
         Decimal amount,
         String product
 
@@ -58,7 +58,7 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         this.calloutType = CREATE_PRODUCT;
         this.recordId = recordId;
         this.currencyName = currencyName;
-        this.reccuringInterval = reccuringInterval;
+        this.recurringInterval = recurringInterval;
         this.amount = amount;
         this.productWrapper = new StripeWrapper.ProductWrapper(product);
     }
@@ -123,7 +123,7 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
                 String productId = StripeAPIService.createProduct(productWrapper);
                 if (productId != null || Test.isRunningTest()) {
                     String requestBody = 'currency=' + EncodingUtil.urlEncode(currencyName, 'UTF-8') +
-                                            '&recurring[interval]=' + EncodingUtil.urlEncode(reccuringInterval.toLowerCase(), 'UTF-8') +
+                                            '&recurring[interval]=' + EncodingUtil.urlEncode(recurringInterval.toLowerCase(), 'UTF-8') +
                                             '&unit_amount=' + String.valueOf(amount.longValue()) +
                                             '&product=' + EncodingUtil.urlEncode(productId, 'UTF-8');
                     System.enqueueJob(new StripeChainedCalloutQueueable(recordId, requestBody));

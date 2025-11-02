@@ -46,11 +46,13 @@ public with sharing class ContactTriggerHelper {
                     customer.Contact__c = cont.Id;
 
                     // Map Contact email
+                    if (String.isNotBlank(cont.Email)) {
                     customer.Customer_Email__c = cont.Email;
+                }
 
                     // Map Contact name
                     if (String.isNotBlank(cont.FirstName)) {
-                        customer.Customer_Name__c = cont.LastName + ' ' + cont.FirstName;
+                        customer.Customer_Name__c = cont.FirstName + ' ' + cont.LastName;    
                     } else if (String.isNotBlank(cont.LastName)) {
                         customer.Customer_Name__c = cont.LastName;
                     } else {

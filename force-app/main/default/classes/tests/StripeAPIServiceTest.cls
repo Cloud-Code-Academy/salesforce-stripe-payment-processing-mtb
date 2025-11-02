@@ -335,7 +335,7 @@ private class StripeAPIServiceTest {
             Test.setMock(HttpCalloutMock.class, new StripeCalloutMock(200, 'payment_methods'));
 
             Test.startTest();
-            String paymentMethodId = StripeAPIService.createDefaultMethod('cus_test123');
+            String paymentMethodId = StripeAPIService.createDefaultMethod();
             Test.stopTest();
 
             Assert.areNotEqual(null, paymentMethodId, 'Payment method ID should not be null');
@@ -350,7 +350,7 @@ private class StripeAPIServiceTest {
 
             Test.startTest();
             try {
-                StripeAPIService.createDefaultMethod('cus_test123');
+                StripeAPIService.createDefaultMethod();
                 Assert.fail('Expected StripeException to be thrown');
             } catch (StripeException ex) {
                 Assert.areEqual(402, ex.httpStatusCode, 'HTTP status code should be 402');

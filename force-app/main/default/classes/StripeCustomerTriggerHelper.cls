@@ -12,7 +12,7 @@ public with sharing class StripeCustomerTriggerHelper {
             return;
         }
 
-        List<Contact> contactsForUpdate = new List<Contact>();
+        Map<Id, Contact> contactsForUpdate = new Map<Id, Contact>();
         //Check whether Stripe_Customer__c object is available for update
         if (Schema.SObjectType.Contact.isUpdateable()) {
             for (Stripe_Customer__c customer : newList) {
@@ -33,20 +33,20 @@ public with sharing class StripeCustomerTriggerHelper {
                 }
 
                 if (shouldUpdateContact) {
-                    Contact cont = new Contact();
-                    cont.Id = customer.Contact__c;
+
                     //Check whether Stripe_Customer_ID__c field of Contact object is available for update
                     if (Schema.SObjectType.Contact.fields.Stripe_Customer_ID__c.isUpdateable()) {
-                        cont.Stripe_Customer_ID__c = customer.Stripe_Customer_ID__c;
+                         contactsForUpdate.put(customer.Contact__c, 
+                                            new Contact(Id = customer.Contact__c, 
+                                            Stripe_Customer_ID__c = customer.Stripe_Customer_ID__c));
                     } else {
                         throw new SecurityException('User does not have edit access to Stripe_Customer_ID__c field of Contact object');
                     }
-                    contactsForUpdate.add(cont);
                 }
             }
             try{
                 if (!contactsForUpdate.isEmpty()) {
-                    update as user contactsForUpdate;
+                    update as user contactsForUpdate.values();
                 }
             } catch(Exception e){
                 Logger.error('Failed to update Stripe Customer: ', e);
@@ -72,7 +72,7 @@ public with sharing class StripeCustomerTriggerHelper {
         }
 
         List<Stripe_Customer__c> stripeCustomersForProcess = new List<Stripe_Customer__c>();
-        if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
+        if (Schema.SObjectType.Stripe_Customer__c.isAccessible()) {
             //Filter out records that already have Customer ID
             for (Stripe_Customer__c customer : newList) {
                 if (String.isBlank(customer.Stripe_Customer_ID__c)) {

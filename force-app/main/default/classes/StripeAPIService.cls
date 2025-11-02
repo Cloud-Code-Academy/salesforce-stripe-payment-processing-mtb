@@ -1,4 +1,5 @@
 public with sharing class StripeAPIService {
+    private static StripePaymentSettings__mdt paymentSetting = StripePaymentSettings__mdt.getInstance('CurrentSettings');
     private static final String API_NAMED_CREDENTIALS = 'callout:StripeAPI';
     private static final String CUSTOMER_ENDPOINT = '/v1/customers';
     private static final String PAYMENT_ENDPOINT = '/v1/payment_methods';
@@ -101,10 +102,12 @@ public with sharing class StripeAPIService {
      * @return String The Stripe payment method ID if successful
      * @throws StripeException If the API call fails (includes specific subtype based on error)
      */
-    public static String createDefaultMethod(String customerId){
+    public static String createDefaultMethod(){
         String endPoint = API_NAMED_CREDENTIALS + PAYMENT_ENDPOINT;
-        String requestBody = 'type=' + EncodingUtil.urlEncode('card', 'UTF-8')+
-                            '&card[token]=' + EncodingUtil.urlEncode('tok_visa', 'UTF-8');
+        String requestBody = 'type=' + EncodingUtil.urlEncode(
+                                paymentSetting.DefaultMethodType__c, 'UTF-8')+
+                                '&card[token]=' + EncodingUtil.urlEncode(
+                                paymentSetting.DefaultMethodCardToken__c, 'UTF-8');
 
         // Use retry logic - creating a payment method is idempotent
         HttpResponse res = makeCalloutWithRetry(endPoint, requestBody, true);
@@ -148,10 +151,11 @@ public with sharing class StripeAPIService {
     public static StripeWrapper createSession(String customerId, String priceId){
         String endPoint = API_NAMED_CREDENTIALS + SESSION_ENDPOINT;
         String requestBody = 'customer=' + EncodingUtil.urlEncode(customerId, 'UTF-8') +
-                            '&line_items[0][price]=' + EncodingUtil.urlEncode(priceId, 'UTF-8') +
-                            '&line_items[0][quantity]=' + String.valueOf(1) +
-                            '&mode=' + EncodingUtil.urlEncode('subscription', 'UTF-8') +
-                            '&success_url=' + EncodingUtil.urlEncode('https://example.com/success', 'UTF-8');
+                                '&line_items[0][price]=' + EncodingUtil.urlEncode(priceId, 'UTF-8') +
+                                '&line_items[0][quantity]=' + String.valueOf(1) +
+                                '&mode=' + EncodingUtil.urlEncode(
+                                paymentSetting.CheckoutSessionMode__c, 'UTF-8') +
+                                '&success_url=' + EncodingUtil.urlEncode(paymentSetting.Successful_URL__c, 'UTF-8');
 
         // Use retry logic - creating a checkout session is idempotent
         HttpResponse res = makeCalloutWithRetry(endPoint, requestBody, true);
