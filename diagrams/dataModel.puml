@@ -94,7 +94,7 @@ PaymentTransaction "1" -- "0..1" StripePaymentTransaction : syncs to
 Contact "1" --o "0..1" StripeCustomer : linked to
 StripeCustomer "1" --> "0..*" StripeSubscription : has
 StripeCustomer "1" --> "0..*" StripeInvoice : has
-StripeSubscription "1" --> "1" PricingPlan : contains
+StripeSubscription "1" -l-> "1" PricingPlan : contains
 StripeSubscription "1" --> "0..*" StripeInvoice : generates
 StripeSubscription "1" <-- "0..*" StripePaymentTransaction : payment for
 StripeInvoice "1" --> "1" DunningStatus : has
