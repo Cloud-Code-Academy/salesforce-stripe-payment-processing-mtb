@@ -391,6 +391,168 @@ private class StripeAPIServiceTest {
         }
     }
 
+    // ========== Tests for updateCustomer ==========
+
+    @isTest
+    static void testUpdateCustomer_Success() {
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new UpdateCustomerSuccessMock());
+
+            // Create test data
+            StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
+                'Updated Name',
+                'updated@example.com',
+                '+0987654321'
+            );
+
+            Test.startTest();
+            String customerId = StripeAPIService.updateCustomer(customerWrapper, 'cus_test123');
+            Test.stopTest();
+
+            Assert.areNotEqual(null, customerId, 'Customer ID should not be null');
+            Assert.areEqual('cus_test123', customerId, 'Customer ID should match the response');
+        }
+    }
+
+    @isTest
+    static void testUpdateCustomer_PartialUpdate() {
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new UpdateCustomerSuccessMock());
+
+            // Create test data with only some fields
+            StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
+                null,  // No name update
+                'newemail@example.com',  // Only update email
+                null   // No phone update
+            );
+
+            Test.startTest();
+            String customerId = StripeAPIService.updateCustomer(customerWrapper, 'cus_test123');
+            Test.stopTest();
+
+            Assert.areNotEqual(null, customerId, 'Customer ID should not be null for partial update');
+            Assert.areEqual('cus_test123', customerId, 'Customer ID should match');
+        }
+    }
+
+    @isTest
+    static void testUpdateCustomer_AllFieldsNull() {
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new UpdateCustomerSuccessMock());
+
+            // Create test data with all null fields
+            StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
+                null,
+                null,
+                null
+            );
+
+            Test.startTest();
+            String customerId = StripeAPIService.updateCustomer(customerWrapper, 'cus_test123');
+            Test.stopTest();
+
+            // Should still work even with empty request body
+            Assert.areNotEqual(null, customerId, 'Customer ID should not be null even with empty update');
+        }
+    }
+
+    @isTest
+    static void testUpdateCustomer_HttpFailure_400() {
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new StripeAPIFailureMock(400, 'Invalid customer ID'));
+
+            StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
+                'Test Name',
+                'test@example.com',
+                '+1234567890'
+            );
+
+            Test.startTest();
+            try {
+                StripeAPIService.updateCustomer(customerWrapper, 'cus_invalid');
+                Assert.fail('Expected StripeException to be thrown');
+            } catch (StripeException ex) {
+                Assert.areEqual(400, ex.httpStatusCode, 'HTTP status code should be 400');
+            }
+            Test.stopTest();
+        }
+    }
+
+    @isTest
+    static void testUpdateCustomer_HttpFailure_404() {
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new StripeAPIFailureMock(404, 'Customer not found'));
+
+            StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
+                'Test Name',
+                'test@example.com',
+                '+1234567890'
+            );
+
+            Test.startTest();
+            try {
+                StripeAPIService.updateCustomer(customerWrapper, 'cus_nonexistent');
+                Assert.fail('Expected StripeException to be thrown');
+            } catch (StripeException ex) {
+                Assert.areEqual(404, ex.httpStatusCode, 'HTTP status code should be 404');
+            }
+            Test.stopTest();
+        }
+    }
+
+    @isTest
+    static void testUpdateCustomer_RetryableError() {
+        System.runAs(getTestUser()) {
+            // Mock that fails with 503 then succeeds
+            Test.setMock(HttpCalloutMock.class, new RetrySuccessMock(1));
+
+            StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
+                'Test Name',
+                'test@example.com',
+                '+1234567890'
+            );
+
+            Test.startTest();
+            String customerId = StripeAPIService.updateCustomer(customerWrapper, 'cus_test123');
+            Test.stopTest();
+
+            Assert.areNotEqual(null, customerId, 'Customer ID should not be null after retry');
+            Assert.areEqual('cus_test123', customerId, 'Customer ID should match after successful retry');
+        }
+    }
+
+    @isTest
+    static void testUpdateCustomer_SpecialCharacters() {
+        System.runAs(getTestUser()) {
+            Test.setMock(HttpCalloutMock.class, new UpdateCustomerSuccessMock());
+
+            // Test with special characters that need URL encoding
+            StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
+                'José María O\'Brien-Smith',
+                'josé.maría@example.com',
+                '+1 (555) 123-4567'
+            );
+
+            Test.startTest();
+            String customerId = StripeAPIService.updateCustomer(customerWrapper, 'cus_test123');
+            Test.stopTest();
+
+            Assert.areNotEqual(null, customerId, 'Customer ID should handle special characters');
+            Assert.areEqual('cus_test123', customerId, 'Customer ID should match');
+        }
+    }
+
+    // Mock class for successful customer updates
+    private class UpdateCustomerSuccessMock implements HttpCalloutMock {
+        public HTTPResponse respond(HTTPRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setHeader('Content-Type', 'application/json');
+            res.setStatusCode(200);
+            res.setBody('{"id":"cus_test123","name":"Updated Name","email":"updated@example.com"}');
+            return res;
+        }
+    }
+
     // ========== Tests for createSession ==========
 
     @isTest

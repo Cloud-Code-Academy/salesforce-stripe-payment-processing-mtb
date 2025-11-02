@@ -12,6 +12,7 @@ import httpx
 from app.auth.salesforce_oauth import salesforce_oauth
 from app.config import settings
 from app.models.salesforce_records import (
+    SalesforceContact,
     SalesforceCustomer,
     SalesforcePaymentTransaction,
     SalesforceSubscription,
@@ -325,6 +326,32 @@ class SalesforceService:
             external_id_field="Stripe_Customer_ID__c",
             external_id_value=customer_data.Stripe_Customer_ID__c,
             record_data=customer_data.model_dump(exclude_none=True),
+        )
+
+    async def upsert_contact(self, contact_data: SalesforceContact) -> Dict[str, Any]:
+        """
+        Upsert Contact record using Stripe Customer ID as external ID.
+
+        Args:
+            contact_data: Contact data model
+
+        Returns:
+            Upsert response
+        """
+        if not contact_data.Stripe_Customer_ID__c:
+            raise SalesforceAPIException(
+                "Stripe_Customer_ID__c is required for upserting Contact",
+                details={"contact_data": contact_data.model_dump()},
+            )
+
+        # Parse name into FirstName and LastName if needed
+        record_data = contact_data.model_dump(exclude_none=True)
+
+        return await self.upsert_record(
+            sobject_type="Contact",
+            external_id_field="Stripe_Customer_ID__c",
+            external_id_value=contact_data.Stripe_Customer_ID__c,
+            record_data=record_data,
         )
 
     async def upsert_subscription(

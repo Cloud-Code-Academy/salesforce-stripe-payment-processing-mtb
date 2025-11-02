@@ -137,6 +137,27 @@ class SalesforceUpsertResponse(BaseModel):
     details: dict = Field(default_factory=dict)
 
 
+class SalesforceContact(BaseModel):
+    """Salesforce Contact record"""
+
+    Stripe_Customer_ID__c: Optional[str] = Field(None, description="External ID - Stripe customer ID")
+    Email: Optional[str] = None
+    FirstName: Optional[str] = None
+    LastName: Optional[str] = None
+    Phone: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Stripe_Customer_ID__c": "cus_ABC123",
+                "Email": "customer@example.com",
+                "FirstName": "John",
+                "LastName": "Doe",
+                "Phone": "+1234567890",
+            }
+        }
+
+
 class SalesforceError(BaseModel):
     """Salesforce API error response"""
 
