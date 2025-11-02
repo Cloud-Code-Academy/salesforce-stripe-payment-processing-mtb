@@ -79,47 +79,6 @@ class SalesforceSubscription(BaseModel):
         }
 
 
-class SalesforceInvoice(BaseModel):
-    """Salesforce Stripe_Invoice__c record"""
-
-    Stripe_Invoice_ID__c: str = Field(
-        description="External ID - Stripe invoice ID"
-    )
-    Stripe_Subscription__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Subscription__c"
-    )
-    Stripe_Customer__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Customer__c"
-    )
-    Amount__c: Optional[float] = None
-    Line_Items__c: Optional[str] = None
-    Invoice_PDF_URL__c: Optional[str] = None
-    Period_Start__c: Optional[datetime] = None
-    Period_End__c: Optional[datetime] = None
-    Due_Date__c: Optional[datetime] = None
-    Tax_Amount__c: Optional[float] = None
-    Discounts_Applied__c: Optional[float] = None
-    Status__c: Optional[
-        Literal["draft", "open", "paid", "uncollectible", "void"]
-    ] = None
-    Dunning_Status__c: Optional[
-        Literal["none", "trying", "exhausted"]
-    ] = "none"
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "Stripe_Invoice_ID__c": "in_ABC123",
-                "Stripe_Subscription__c": "sub_ABC123",
-                "Stripe_Customer__c": "cus_ABC123",
-                "Amount__c": 29.99,
-                "Status__c": "paid",
-                "Tax_Amount__c": 2.50,
-                "Discounts_Applied__c": 5.00,
-            }
-        }
-
-
 class SalesforcePaymentTransaction(BaseModel):
     """Salesforce Payment_Transaction__c record"""
 
@@ -140,7 +99,6 @@ class SalesforcePaymentTransaction(BaseModel):
             "requires_capture",
             "canceled",
             "succeeded",
-            "failed",
         ]
     ] = None
     Payment_Method_Type__c: Optional[str] = None
@@ -148,16 +106,6 @@ class SalesforcePaymentTransaction(BaseModel):
     Stripe_Subscription__c: Optional[str] = Field(
         None, description="Lookup to Stripe_Subscription__c"
     )
-    Stripe_Invoice__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Invoice__c"
-    )
-    Stripe_Invoice_ID__c: Optional[str] = Field(
-        None, description="Stripe Invoice ID (for linking)"
-    )
-    Failure_Reason__c: Optional[str] = None
-    Transaction_Type__c: Optional[
-        Literal["initial_payment", "recurring_payment"]
-    ] = None
 
     class Config:
         json_schema_extra = {
@@ -187,6 +135,27 @@ class SalesforceUpsertResponse(BaseModel):
     records_processed: int
     errors: list[dict] = Field(default_factory=list)
     details: dict = Field(default_factory=dict)
+
+
+class SalesforceContact(BaseModel):
+    """Salesforce Contact record"""
+
+    Stripe_Customer_ID__c: Optional[str] = Field(None, description="External ID - Stripe customer ID")
+    Email: Optional[str] = None
+    FirstName: Optional[str] = None
+    LastName: Optional[str] = None
+    Phone: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Stripe_Customer_ID__c": "cus_ABC123",
+                "Email": "customer@example.com",
+                "FirstName": "John",
+                "LastName": "Doe",
+                "Phone": "+1234567890",
+            }
+        }
 
 
 class SalesforceError(BaseModel):
