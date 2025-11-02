@@ -409,12 +409,20 @@ Resources:
       Handler: sqs_worker.lambda_handler
       Description: Processes Stripe events from SQS and updates Salesforce
       Timeout: 90  # Longer timeout for Salesforce API calls
-      MemorySize: 512
-      # ReservedConcurrentExecutions: 10  # Uncomment if you need to limit concurrency
+      MemorySize: 1024  # Increased for faster cold start initialization
+      Environment:
+        Variables:
+          STRIPE_API_KEY_ARN: !Ref StripeApiKeySecret
+          STRIPE_WEBHOOK_SECRET_ARN: !Ref StripeWebhookSecret
+          SALESFORCE_CLIENT_SECRET_ARN: !Ref SalesforceClientSecret
+          SALESFORCE_INSTANCE_URL: !Ref SalesforceInstanceUrl
       Policies:
         # Permission to receive messages from SQS
         - SQSPollerPolicy:
             QueueName: !GetAtt StripeEventQueue.QueueName
+        # Permission to send messages to low-priority queue
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt LowPriorityEventQueue.QueueName
         # Permission to read/write DynamoDB (multiple tables)
         - DynamoDBCrudPolicy:
             TableName: !Ref CacheTable
@@ -532,6 +540,13 @@ Resources:
             MaximumBatchingWindowInSeconds: 30  # Wait up to 30s to accumulate messages
             FunctionResponseTypes:
               - ReportBatchItemFailures  # Enable partial batch failures
+        # Triggered on a schedule to process accumulated batches
+        ScheduledBatchProcessing:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Description: Periodically process accumulated batches even when SQS queue is empty
+            Enabled: true
       Tags:
         Environment: !Ref Environment
         Purpose: Bulk API Processing

@@ -79,6 +79,51 @@ class SalesforceSubscription(BaseModel):
         }
 
 
+class SalesforceInvoice(BaseModel):
+    """Salesforce Stripe_Invoice__c record"""
+
+    Stripe_Invoice_ID__c: str = Field(
+        description="External ID - Stripe invoice ID"
+    )
+    Stripe_Customer__c: Optional[str] = Field(
+        None, description="Lookup to Stripe_Customer__c (by External ID)"
+    )
+    Stripe_Subscription__c: Optional[str] = Field(
+        None, description="Lookup to Stripe_Subscription__c (by External ID)"
+    )
+    Amount__c: Optional[float] = None
+    Status__c: Optional[
+        Literal[
+            "draft",
+            "open",
+            "paid",
+            "uncollectible",
+            "void",
+        ]
+    ] = None
+    Due_Date__c: Optional[datetime] = None
+    Period_Start__c: Optional[datetime] = None
+    Period_End__c: Optional[datetime] = None
+    Discount_Applied__c: Optional[float] = None
+    Tax_Amount__c: Optional[float] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Stripe_Invoice_ID__c": "in_ABC123",
+                "Stripe_Customer__c": "cus_ABC123",
+                "Stripe_Subscription__c": "sub_ABC123",
+                "Amount__c": 29.99,
+                "Status__c": "open",
+                "Due_Date__c": "2024-10-18T12:00:00Z",
+                "Period_Start__c": "2024-10-01T00:00:00Z",
+                "Period_End__c": "2024-10-31T23:59:59Z",
+                "Discount_Applied__c": 0.00,
+                "Tax_Amount__c": 0.00,
+            }
+        }
+
+
 class SalesforcePaymentTransaction(BaseModel):
     """Salesforce Payment_Transaction__c record"""
 
@@ -135,6 +180,27 @@ class SalesforceUpsertResponse(BaseModel):
     records_processed: int
     errors: list[dict] = Field(default_factory=list)
     details: dict = Field(default_factory=dict)
+
+
+class SalesforceContact(BaseModel):
+    """Salesforce Contact record"""
+
+    Stripe_Customer_ID__c: Optional[str] = Field(None, description="External ID - Stripe customer ID")
+    Email: Optional[str] = None
+    FirstName: Optional[str] = None
+    LastName: Optional[str] = None
+    Phone: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Stripe_Customer_ID__c": "cus_ABC123",
+                "Email": "customer@example.com",
+                "FirstName": "John",
+                "LastName": "Doe",
+                "Phone": "+1234567890",
+            }
+        }
 
 
 class SalesforceError(BaseModel):

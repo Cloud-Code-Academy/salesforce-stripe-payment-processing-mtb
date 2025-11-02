@@ -7,8 +7,7 @@ Handles Stripe payment-related webhook events.
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from app.models.stripe_events import StripeEvent
-from app.models.salesforce_records import SalesforcePaymentTransaction
+from app.models.salesforce_records import SalesforcePaymentTransaction, SalesforceInvoice
 from app.services.salesforce_service import salesforce_service
 from app.utils.logging_config import get_logger
 from app.utils.exceptions import SalesforceAPIException
@@ -19,32 +18,63 @@ logger = get_logger(__name__)
 class PaymentHandler:
     """Handler for payment events"""
 
-    async def handle_payment_succeeded(self, event: StripeEvent) -> Dict[str, Any]:
+    async def handle_payment_succeeded(self, event) -> Dict[str, Any]:
         """
         Handle payment_intent.succeeded event.
         Creates a successful payment transaction in Salesforce.
 
         Args:
-            event: Stripe webhook event
+            event: Stripe webhook event (dict or StripeEvent object)
 
         Returns:
             Processing result
         """
-        payment_intent = event.event_object
+        # Handle both dict and StripeEvent object formats
+        if isinstance(event, dict):
+            event_id = event.get("id")
+            payment_intent = event["data"]["object"]
+        else:
+            event_id = event.id
+            payment_intent = event.event_object
 
         logger.info(
             "Processing payment_intent.succeeded event",
             extra={
-                "event_id": event.id,
+                "event_id": event_id,
                 "payment_intent_id": payment_intent.get("id"),
                 "amount": payment_intent.get("amount"),
             },
         )
 
+        # Look up Salesforce customer ID using Stripe customer ID
+        stripe_customer_id = payment_intent.get("customer")
+        salesforce_customer_id = None
+
+        if stripe_customer_id:
+            try:
+                query = (
+                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
+                    f"LIMIT 1"
+                )
+                result = await salesforce_service.query(query)
+                if result.get("records"):
+                    salesforce_customer_id = result["records"][0]["Id"]
+                else:
+                    logger.warning(
+                        f"Stripe customer not found in Salesforce: {stripe_customer_id}",
+                        extra={"stripe_customer_id": stripe_customer_id}
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to query Stripe customer: {str(e)}",
+                    extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
+                )
+
         # Map payment intent to Salesforce transaction
         salesforce_transaction = SalesforcePaymentTransaction(
             Stripe_Payment_Intent_ID__c=payment_intent["id"],
-            Stripe_Customer__c=payment_intent.get("customer"),
+            Stripe_Customer__c=salesforce_customer_id,
             Amount__c=payment_intent.get("amount", 0) / 100,  # Convert cents to dollars
             Currency__c=payment_intent.get("currency", "").upper(),
             Status__c="succeeded",
@@ -82,33 +112,64 @@ class PaymentHandler:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    async def handle_payment_failed(self, event: StripeEvent) -> Dict[str, Any]:
+    async def handle_payment_failed(self, event) -> Dict[str, Any]:
         """
         Handle payment_intent.payment_failed event.
         Creates a failed payment transaction in Salesforce.
 
         Args:
-            event: Stripe webhook event
+            event: Stripe webhook event (dict or StripeEvent object)
 
         Returns:
             Processing result
         """
-        payment_intent = event.event_object
+        # Handle both dict and StripeEvent object formats
+        if isinstance(event, dict):
+            event_id = event.get("id")
+            payment_intent = event["data"]["object"]
+        else:
+            event_id = event.id
+            payment_intent = event.event_object
 
         logger.warning(
             "Processing payment_intent.payment_failed event",
             extra={
-                "event_id": event.id,
+                "event_id": event_id,
                 "payment_intent_id": payment_intent.get("id"),
                 "amount": payment_intent.get("amount"),
                 "error": payment_intent.get("last_payment_error"),
             },
         )
 
+        # Look up Salesforce customer ID using Stripe customer ID
+        stripe_customer_id = payment_intent.get("customer")
+        salesforce_customer_id = None
+
+        if stripe_customer_id:
+            try:
+                query = (
+                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
+                    f"LIMIT 1"
+                )
+                result = await salesforce_service.query(query)
+                if result.get("records"):
+                    salesforce_customer_id = result["records"][0]["Id"]
+                else:
+                    logger.warning(
+                        f"Stripe customer not found in Salesforce: {stripe_customer_id}",
+                        extra={"stripe_customer_id": stripe_customer_id}
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to query Stripe customer: {str(e)}",
+                    extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
+                )
+
         # Map payment intent to Salesforce transaction
         salesforce_transaction = SalesforcePaymentTransaction(
             Stripe_Payment_Intent_ID__c=payment_intent["id"],
-            Stripe_Customer__c=payment_intent.get("customer"),
+            Stripe_Customer__c=salesforce_customer_id,
             Amount__c=payment_intent.get("amount", 0) / 100,  # Convert cents to dollars
             Currency__c=payment_intent.get("currency", "").upper(),
             Status__c="failed",
@@ -146,6 +207,146 @@ class PaymentHandler:
             "salesforce_result": result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+    async def handle_invoice_created(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle invoice.created webhook event from Stripe.
+        Creates a Stripe_Invoice__c record for tracking all invoices.
+
+        This event fires whenever Stripe creates an invoice (subscription renewal, one-time charge, etc).
+        Invoices track billing records regardless of payment status.
+
+        Args:
+            event: Stripe webhook event containing invoice data with structure:
+                {
+                    "id": "evt_xxx",
+                    "type": "invoice.created",
+                    "data": {
+                        "object": {
+                            "id": "in_xxx",
+                            "customer": "cus_xxx",
+                            "subscription": "sub_xxx",
+                            "amount_due": 2999,
+                            "currency": "usd",
+                            "status": "open",
+                            "number": "INV-0001",
+                            "created": 1234567890,
+                            "due_date": 1234567890,
+                            "description": "Invoice for subscription"
+                        }
+                    }
+                }
+
+        Returns:
+            Processing result with invoice ID and Salesforce record details
+        """
+        invoice_data = event.get("data", {}).get("object", {})
+        invoice_id = invoice_data.get("id")
+
+        logger.info(
+            f"Processing invoice.created event",
+            extra={
+                "event_id": event.get("id"),
+                "invoice_id": invoice_id,
+                "customer_id": invoice_data.get("customer"),
+                "subscription_id": invoice_data.get("subscription"),
+            },
+        )
+
+        try:
+            # Look up Salesforce customer ID using Stripe customer ID
+            stripe_customer_id = invoice_data.get("customer")
+            salesforce_customer_id = None
+
+            if stripe_customer_id:
+                try:
+                    query = (
+                        f"SELECT Id FROM Stripe_Customer__c "
+                        f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
+                        f"LIMIT 1"
+                    )
+                    result = await salesforce_service.query(query)
+                    if result.get("records"):
+                        salesforce_customer_id = result["records"][0]["Id"]
+                        logger.info(
+                            f"Found Salesforce customer for Stripe customer {stripe_customer_id}: {salesforce_customer_id}",
+                            extra={"stripe_customer_id": stripe_customer_id}
+                        )
+                    else:
+                        logger.warning(
+                            f"Stripe customer not found in Salesforce: {stripe_customer_id}",
+                            extra={"stripe_customer_id": stripe_customer_id}
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to query Stripe customer: {str(e)}",
+                        extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
+                    )
+
+            # Create Salesforce invoice record
+            # Calculate discount from total and subtotal
+            discount = 0
+            total = invoice_data.get("total", 0)
+            subtotal = invoice_data.get("subtotal", 0)
+            if subtotal > 0:
+                discount = (subtotal - total) / 100  # Convert from cents
+
+            # Get tax amount
+            tax_amount = invoice_data.get("tax", 0)
+            if tax_amount:
+                tax_amount = tax_amount / 100  # Convert from cents
+
+            salesforce_invoice = SalesforceInvoice(
+                Stripe_Invoice_ID__c=invoice_id,
+                Stripe_Customer__c=salesforce_customer_id,
+                Stripe_Subscription__c=invoice_data.get("subscription"),
+                Amount__c=invoice_data.get("amount_due", 0) / 100 if invoice_data.get("amount_due") else None,
+                Status__c=invoice_data.get("status", "open"),
+                Due_Date__c=datetime.fromtimestamp(
+                    invoice_data["due_date"]
+                ) if invoice_data.get("due_date") else None,
+                Period_Start__c=datetime.fromtimestamp(
+                    invoice_data["period_start"]
+                ) if invoice_data.get("period_start") else None,
+                Period_End__c=datetime.fromtimestamp(
+                    invoice_data["period_end"]
+                ) if invoice_data.get("period_end") else None,
+                Discount_Applied__c=discount if discount > 0 else None,
+                Tax_Amount__c=tax_amount if tax_amount > 0 else None,
+            )
+
+            result = await salesforce_service.upsert_invoice(salesforce_invoice)
+
+            logger.info(
+                f"Invoice created in Salesforce",
+                extra={
+                    "invoice_id": invoice_id,
+                    "status": invoice_data.get("status"),
+                    "amount": invoice_data.get("amount_due", 0) / 100,
+                },
+            )
+
+            return {
+                "invoice_id": invoice_id,
+                "status": invoice_data.get("status"),
+                "amount": invoice_data.get("amount_due", 0) / 100 if invoice_data.get("amount_due") else 0,
+                "currency": invoice_data.get("currency", "").upper(),
+                "customer_id": invoice_data.get("customer"),
+                "subscription_id": invoice_data.get("subscription"),
+                "salesforce_result": result,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create invoice in Salesforce: {str(e)}",
+                extra={
+                    "invoice_id": invoice_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            )
+            raise
 
     async def handle_invoice_payment_succeeded(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -306,7 +507,7 @@ class PaymentHandler:
 
         try:
             result = await salesforce_service.create_record(
-                sobject="Payment_Transaction__c",
+                sobject_type="Payment_Transaction__c",
                 record_data=transaction_data
             )
 
@@ -493,7 +694,7 @@ class PaymentHandler:
 
         try:
             result = await salesforce_service.create_record(
-                sobject="Payment_Transaction__c",
+                sobject_type="Payment_Transaction__c",
                 record_data=transaction_data
             )
 
