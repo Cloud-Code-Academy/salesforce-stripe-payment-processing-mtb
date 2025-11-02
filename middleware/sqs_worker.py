@@ -18,6 +18,7 @@ from typing import Any, Dict, List
 from app.config import settings
 from app.handlers.event_router import EventRouter
 from app.services.dynamodb_service import dynamodb_service
+from app.services.sqs_service import sqs_service
 from app.utils.logging_config import get_logger, setup_logging
 
 # Setup logging for Lambda
@@ -49,7 +50,7 @@ async def process_event(event_data: Dict[str, Any]) -> Dict[str, Any]:
             await dynamodb_service.connect()
 
         # Route event to appropriate handler
-        router = EventRouter()
+        router = EventRouter(dynamodb_service, sqs_service)
         result = await router.route_event(event_data)
 
         logger.info(
@@ -101,11 +102,14 @@ async def process_sqs_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for record in records:
         try:
-            # Parse SQS message body (contains Stripe event)
+            # Parse SQS message body (contains wrapper with event_data)
             message_body = json.loads(record["body"])
 
+            # Extract the actual Stripe event data from the wrapper
+            event_data = message_body.get("event_data", message_body)
+
             # Process the event
-            result = await process_event(message_body)
+            result = await process_event(event_data)
             results["successful"].append(
                 {"message_id": record["messageId"], "result": result}
             )
