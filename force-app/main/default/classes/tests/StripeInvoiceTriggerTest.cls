@@ -25,7 +25,7 @@ private class StripeInvoiceTriggerTest {
         return [SELECT Id FROM User WHERE Email LIKE 'testuser%@testorg.com' LIMIT 1];
     }
 
-    // ========== PHASE 1: REVENUE ROLLUP TESTS ==========
+    // ========== REVENUE ROLLUP TESTS ==========
 
     /**
      * Test revenue rollup to customer on invoice insert
@@ -95,7 +95,7 @@ private class StripeInvoiceTriggerTest {
         }
     }
 
-    // ========== PHASE 1: FINANCE NOTIFICATIONS TESTS ==========
+    // ========== FINANCE NOTIFICATIONS TESTS ==========
 
     /**
      * Test failure notifications on invoice insert with uncollectible status
@@ -156,7 +156,7 @@ private class StripeInvoiceTriggerTest {
         }
     }
 
-    // ========== PHASE 1: HEALTH SCORING TESTS ==========
+    // ========== HEALTH SCORING TESTS ==========
 
     /**
      * Test customer health score calculation with all paid invoices
@@ -220,7 +220,7 @@ private class StripeInvoiceTriggerTest {
         }
     }
 
-    // ========== PHASE 2: CHURN RISK TESTS ==========
+    // ========== CHURN RISK TESTS ==========
 
     /**
      * Test churn risk detection - Low risk
@@ -308,7 +308,7 @@ private class StripeInvoiceTriggerTest {
         }
     }
 
-    // ========== PHASE 2: DUNNING ESCALATION TESTS ==========
+    // ========== DUNNING ESCALATION TESTS ==========
 
     /**
      * Test dunning escalation logging
