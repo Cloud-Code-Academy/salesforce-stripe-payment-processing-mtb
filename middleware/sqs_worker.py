@@ -159,7 +159,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(
         "SQS Worker Lambda invoked",
         extra={
-            "request_id": context.request_id,
+            "request_id": context.aws_request_id,
             "function_name": context.function_name,
             "record_count": len(event.get("Records", [])),
         },
