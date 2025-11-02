@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from app.models.stripe_events import StripeEvent
-from app.models.salesforce_records import SalesforcePaymentTransaction
+from app.models.salesforce_records import SalesforcePaymentTransaction, SalesforceInvoice
 from app.services.salesforce_service import salesforce_service
 from app.utils.logging_config import get_logger
 from app.utils.exceptions import SalesforceAPIException
@@ -146,6 +146,104 @@ class PaymentHandler:
             "salesforce_result": result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+    async def handle_invoice_created(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle invoice.created webhook event from Stripe.
+        Creates a Stripe_Invoice__c record for tracking all invoices.
+
+        This event fires whenever Stripe creates an invoice (subscription renewal, one-time charge, etc).
+        Invoices track billing records regardless of payment status.
+
+        Args:
+            event: Stripe webhook event containing invoice data with structure:
+                {
+                    "id": "evt_xxx",
+                    "type": "invoice.created",
+                    "data": {
+                        "object": {
+                            "id": "in_xxx",
+                            "customer": "cus_xxx",
+                            "subscription": "sub_xxx",
+                            "amount_due": 2999,
+                            "currency": "usd",
+                            "status": "open",
+                            "number": "INV-0001",
+                            "created": 1234567890,
+                            "due_date": 1234567890,
+                            "description": "Invoice for subscription"
+                        }
+                    }
+                }
+
+        Returns:
+            Processing result with invoice ID and Salesforce record details
+        """
+        invoice_data = event.get("data", {}).get("object", {})
+        invoice_id = invoice_data.get("id")
+
+        logger.info(
+            f"Processing invoice.created event",
+            extra={
+                "event_id": event.get("id"),
+                "invoice_id": invoice_id,
+                "customer_id": invoice_data.get("customer"),
+                "subscription_id": invoice_data.get("subscription"),
+            },
+        )
+
+        try:
+            # Create Salesforce invoice record
+            salesforce_invoice = SalesforceInvoice(
+                Stripe_Invoice_ID__c=invoice_id,
+                Stripe_Customer__c=invoice_data.get("customer"),
+                Stripe_Subscription__c=invoice_data.get("subscription"),
+                Amount__c=invoice_data.get("amount_due", 0) / 100 if invoice_data.get("amount_due") else None,
+                Currency__c=invoice_data.get("currency", "").upper(),
+                Status__c=invoice_data.get("status", "open"),
+                Number__c=invoice_data.get("number"),
+                Description__c=invoice_data.get("description"),
+                Created_Date__c=datetime.fromtimestamp(
+                    invoice_data["created"]
+                ) if invoice_data.get("created") else None,
+                Due_Date__c=datetime.fromtimestamp(
+                    invoice_data["due_date"]
+                ) if invoice_data.get("due_date") else None,
+                Payment_Method__c=invoice_data.get("payment_method"),
+            )
+
+            result = await salesforce_service.upsert_invoice(salesforce_invoice)
+
+            logger.info(
+                f"Invoice created in Salesforce",
+                extra={
+                    "invoice_id": invoice_id,
+                    "status": invoice_data.get("status"),
+                    "amount": invoice_data.get("amount_due", 0) / 100,
+                },
+            )
+
+            return {
+                "invoice_id": invoice_id,
+                "status": invoice_data.get("status"),
+                "amount": invoice_data.get("amount_due", 0) / 100 if invoice_data.get("amount_due") else 0,
+                "currency": invoice_data.get("currency", "").upper(),
+                "customer_id": invoice_data.get("customer"),
+                "subscription_id": invoice_data.get("subscription"),
+                "salesforce_result": result,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create invoice in Salesforce: {str(e)}",
+                extra={
+                    "invoice_id": invoice_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            )
+            raise
 
     async def handle_invoice_payment_succeeded(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """

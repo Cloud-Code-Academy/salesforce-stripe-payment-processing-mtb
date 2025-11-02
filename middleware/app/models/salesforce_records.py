@@ -79,6 +79,49 @@ class SalesforceSubscription(BaseModel):
         }
 
 
+class SalesforceInvoice(BaseModel):
+    """Salesforce Stripe_Invoice__c record"""
+
+    Stripe_Invoice_ID__c: str = Field(
+        description="External ID - Stripe invoice ID"
+    )
+    Stripe_Customer__c: Optional[str] = Field(
+        None, description="Lookup to Stripe_Customer__c (by External ID)"
+    )
+    Stripe_Subscription__c: Optional[str] = Field(
+        None, description="Lookup to Stripe_Subscription__c (by External ID)"
+    )
+    Amount__c: Optional[float] = None
+    Currency__c: Optional[str] = None
+    Status__c: Optional[
+        Literal[
+            "draft",
+            "open",
+            "paid",
+            "uncollectible",
+            "void",
+        ]
+    ] = None
+    Due_Date__c: Optional[datetime] = None
+    Created_Date__c: Optional[datetime] = None
+    Payment_Method__c: Optional[str] = None
+    Description__c: Optional[str] = None
+    Number__c: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Stripe_Invoice_ID__c": "in_ABC123",
+                "Stripe_Customer__c": "cus_ABC123",
+                "Stripe_Subscription__c": "sub_ABC123",
+                "Amount__c": 29.99,
+                "Currency__c": "USD",
+                "Status__c": "open",
+                "Created_Date__c": "2024-10-18T12:00:00Z",
+            }
+        }
+
+
 class SalesforcePaymentTransaction(BaseModel):
     """Salesforce Payment_Transaction__c record"""
 

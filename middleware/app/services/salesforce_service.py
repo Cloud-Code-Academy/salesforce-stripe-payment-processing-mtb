@@ -392,6 +392,25 @@ class SalesforceService:
             record_data=transaction_data.model_dump(exclude_none=True),
         )
 
+    async def upsert_invoice(
+        self, invoice_data: "SalesforceInvoice"
+    ) -> Dict[str, Any]:
+        """
+        Upsert invoice record.
+
+        Args:
+            invoice_data: Invoice data model
+
+        Returns:
+            Upsert response
+        """
+        return await self.upsert_record(
+            sobject_type="Stripe_Invoice__c",
+            external_id_field="Stripe_Invoice_ID__c",
+            external_id_value=invoice_data.Stripe_Invoice_ID__c,
+            record_data=invoice_data.model_dump(exclude_none=True),
+        )
+
     async def query(self, soql: str) -> Dict[str, Any]:
         """
         Execute SOQL query.
