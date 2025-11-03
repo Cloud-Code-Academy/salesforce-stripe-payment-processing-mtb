@@ -43,7 +43,7 @@ class SalesforceSubscription(BaseModel):
     Stripe_Customer__c: Optional[str] = Field(
         None, description="Lookup to Stripe_Customer__c (by External ID)"
     )
-    Product_Plan_Name__c: Optional[str] = None
+    PricingPlans__c: Optional[str] = None
     Stripe_Price_ID__c: Optional[str] = None
     Status__c: Optional[
         Literal[
