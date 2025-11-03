@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSetGroup xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Enables Sales Representatives to seamlessly create customer records that automatically sync to Stripe, set up new subscriptions with various pricing plans, and manage customer information across both systems.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Sales Representatives</label>
+    <permissionSets>CustomMetadataAccess</permissionSets>
+    <permissionSets>Stripe_API_Access</permissionSets>
+    <permissionSets>Stripe_Customer_Contact_Access</permissionSets>
+    <permissionSets>Stripe_Payment_Transaction_Access</permissionSets>
+    <permissionSets>Stripe_Subscription_Access</permissionSets>
+    <status>Updated</status>
+</PermissionSetGroup>
