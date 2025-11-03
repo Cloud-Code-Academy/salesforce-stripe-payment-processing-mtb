@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Total_Revenue__c</fullName>
-    <description>Total revenue from all paid invoices</description>
+    <description>Total revenue from all paid invoices.</description>
     <label>Total Revenue</label>
-    <precision>18</precision>
-    <required>false</required>
-    <scale>2</scale>
+    <summarizedField>Stripe_Subscription__c.Total_Paid__c</summarizedField>
+    <summaryForeignKey>Stripe_Subscription__c.Stripe_Customer__c</summaryForeignKey>
+    <summaryOperation>sum</summaryOperation>
     <trackHistory>false</trackHistory>
     <trackTrending>false</trackTrending>
-    <type>Currency</type>
+    <type>Summary</type>
 </CustomField>

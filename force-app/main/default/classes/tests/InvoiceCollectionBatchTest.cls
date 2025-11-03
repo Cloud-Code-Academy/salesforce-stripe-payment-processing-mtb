@@ -42,7 +42,6 @@ private class InvoiceCollectionBatchTest {
             List<Stripe_Invoice__c> overdueInvoices = new List<Stripe_Invoice__c>();
             for (Integer i = 0; i < 5; i++) {
                 overdueInvoices.add(new Stripe_Invoice__c(
-                    Stripe_Customer__c = customer.Id,
                     Stripe_Subscription__c = subscription.Id,
                     Stripe_Invoice_ID__c = 'inv_overdue_' + i,
                     Amount__c = 29.99,
@@ -83,7 +82,7 @@ private class InvoiceCollectionBatchTest {
 
             // Create current invoices (not overdue)
             List<Stripe_Invoice__c> currentInvoices = TestDataFactory.createStripeInvoices(
-                3, customer.Id, subscription.Id, 'open'
+                3, subscription.Id, 'open'
             );
 
             // Run batch job
@@ -115,7 +114,7 @@ private class InvoiceCollectionBatchTest {
 
             // Create test invoices
             List<Stripe_Invoice__c> invoices = TestDataFactory.createStripeInvoices(
-                2, customer.Id, subscription.Id, 'open'
+                2, subscription.Id, 'open'
             );
 
             // Schedule the batch job
@@ -151,7 +150,6 @@ private class InvoiceCollectionBatchTest {
 
             // Overdue and open
             invoices.add(new Stripe_Invoice__c(
-                Stripe_Customer__c = customer.Id,
                 Stripe_Subscription__c = subscription.Id,
                 Stripe_Invoice_ID__c = 'inv_open_overdue',
                 Amount__c = 29.99,
@@ -161,7 +159,6 @@ private class InvoiceCollectionBatchTest {
 
             // Overdue and uncollectible
             invoices.add(new Stripe_Invoice__c(
-                Stripe_Customer__c = customer.Id,
                 Stripe_Subscription__c = subscription.Id,
                 Stripe_Invoice_ID__c = 'inv_uncoll_overdue',
                 Amount__c = 29.99,
@@ -171,7 +168,6 @@ private class InvoiceCollectionBatchTest {
 
             // Overdue but paid
             invoices.add(new Stripe_Invoice__c(
-                Stripe_Customer__c = customer.Id,
                 Stripe_Subscription__c = subscription.Id,
                 Stripe_Invoice_ID__c = 'inv_paid_overdue',
                 Amount__c = 29.99,

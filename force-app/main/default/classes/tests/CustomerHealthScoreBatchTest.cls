@@ -39,7 +39,7 @@ private class CustomerHealthScoreBatchTest {
             // Create subscriptions and paid invoices for each customer
             for (Stripe_Customer__c customer : customers) {
                 Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
-                TestDataFactory.createStripeInvoices(5, customer.Id, subscription.Id, 'paid');
+                TestDataFactory.createStripeInvoices(5, subscription.Id, 'paid');
             }
 
             // Run batch job
@@ -67,10 +67,9 @@ private class CustomerHealthScoreBatchTest {
             Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
 
             // Create mixed invoice history: 3 paid, 1 failed, 1 exhausted
-            TestDataFactory.createStripeInvoices(3, customer.Id, subscription.Id, 'paid');
+            TestDataFactory.createStripeInvoices(3, subscription.Id, 'paid');
 
             Stripe_Invoice__c failedInvoice = new Stripe_Invoice__c(
-                Stripe_Customer__c = customer.Id,
                 Stripe_Subscription__c = subscription.Id,
                 Stripe_Invoice_ID__c = 'inv_failed',
                 Amount__c = 29.99,
@@ -80,7 +79,6 @@ private class CustomerHealthScoreBatchTest {
             insert failedInvoice;
 
             Stripe_Invoice__c exhaustedInvoice = new Stripe_Invoice__c(
-                Stripe_Customer__c = customer.Id,
                 Stripe_Subscription__c = subscription.Id,
                 Stripe_Invoice_ID__c = 'inv_exhausted',
                 Amount__c = 29.99,
@@ -136,7 +134,7 @@ private class CustomerHealthScoreBatchTest {
             // Get test customer
             Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
             Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
-            TestDataFactory.createStripeInvoices(2, customer.Id, subscription.Id, 'paid');
+            TestDataFactory.createStripeInvoices(2, subscription.Id, 'paid');
 
             // Schedule the batch job
             Test.startTest();
@@ -172,7 +170,6 @@ private class CustomerHealthScoreBatchTest {
                 // Create 10 invoices per customer with varying statuses
                 for (Integer i = 0; i < 10; i++) {
                     Stripe_Invoice__c invoice = new Stripe_Invoice__c(
-                        Stripe_Customer__c = customer.Id,
                         Stripe_Subscription__c = subscription.Id,
                         Stripe_Invoice_ID__c = 'inv_' + customer.Id + '_' + i,
                         Amount__c = 29.99,
@@ -206,7 +203,7 @@ private class CustomerHealthScoreBatchTest {
             Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
 
             // Create invoices
-            TestDataFactory.createStripeInvoices(3, customer.Id, subscription.Id, 'paid');
+            TestDataFactory.createStripeInvoices(3, subscription.Id, 'paid');
 
             // Run batch job (should handle any errors gracefully)
             Test.startTest();

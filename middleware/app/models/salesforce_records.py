@@ -43,7 +43,7 @@ class SalesforceSubscription(BaseModel):
     Stripe_Customer__c: Optional[str] = Field(
         None, description="Lookup to Stripe_Customer__c (by External ID)"
     )
-    Product_Plan_Name__c: Optional[str] = None
+    PricingPlans__c: Optional[str] = None
     Stripe_Price_ID__c: Optional[str] = None
     Status__c: Optional[
         Literal[
@@ -91,7 +91,6 @@ class SalesforceInvoice(BaseModel):
     Stripe_Customer__c: Optional[str] = Field(
         None, description="Lookup to Stripe_Customer__c"
     )
-    Amount__c: Optional[float] = None
     Line_Items__c: Optional[str] = None
     Invoice_PDF_URL__c: Optional[str] = None
     Period_Start__c: Optional[datetime] = None
@@ -112,7 +111,6 @@ class SalesforceInvoice(BaseModel):
                 "Stripe_Invoice_ID__c": "in_ABC123",
                 "Stripe_Subscription__c": "sub_ABC123",
                 "Stripe_Customer__c": "cus_ABC123",
-                "Amount__c": 29.99,
                 "Status__c": "paid",
                 "Tax_Amount__c": 2.50,
                 "Discounts_Applied__c": 5.00,

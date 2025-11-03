@@ -53,7 +53,8 @@ $RECYCLE.BIN/
 IlluminatedCloud/
 
 # Profiles
-/force-app/main/default/profiles
+force-app/main/default/profiles
+force-app/main/default/objects
 
 # Middleware
 /middleware/.aws-sam
