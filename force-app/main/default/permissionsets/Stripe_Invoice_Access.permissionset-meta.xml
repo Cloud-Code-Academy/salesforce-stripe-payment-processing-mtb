@@ -1,65 +1,80 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
-    <description>Provides access to payment transaction object and all its fields.</description>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Failure_Reason__c</field>
+        <field>Stripe_Invoice__c.Discounts_Applied__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Payment_Method_Type__c</field>
+        <field>Stripe_Invoice__c.Due_Date__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Status__c</field>
+        <field>Stripe_Invoice__c.Dunning_Status__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Stripe_Customer__c</field>
+        <field>Stripe_Invoice__c.Invoice_PDF_URL__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Stripe_Invoice_ID__c</field>
+        <field>Stripe_Invoice__c.Line_Items__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Stripe_Invoice__c</field>
+        <field>Stripe_Invoice__c.Period_End__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Stripe_Payment_Intent_ID__c</field>
+        <field>Stripe_Invoice__c.Period_Start__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Stripe_Subscription__c</field>
+        <field>Stripe_Invoice__c.Status__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Transaction_Type__c</field>
+        <field>Stripe_Invoice__c.Stripe_Customer__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Stripe_Invoice__c.Stripe_Subscription__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Stripe_Invoice__c.Tax_Amount__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
-    <label>Stripe Payment Transaction Access</label>
+    <label>Stripe Invoice Access</label>
     <objectPermissions>
         <allowCreate>true</allowCreate>
         <allowDelete>true</allowDelete>
         <allowEdit>true</allowEdit>
         <allowRead>true</allowRead>
         <modifyAllRecords>false</modifyAllRecords>
-        <object>Payment_Transaction__c</object>
+        <object>Stripe_Invoice__c</object>
         <viewAllFields>false</viewAllFields>
         <viewAllRecords>false</viewAllRecords>
     </objectPermissions>
-    <tabSettings>
-        <tab>Payment_Transaction__c</tab>
-        <visibility>Visible</visibility>
-    </tabSettings>
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Stripe_Subscription__c</object>
+        <viewAllFields>false</viewAllFields>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
 </PermissionSet>
