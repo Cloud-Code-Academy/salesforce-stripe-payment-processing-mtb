@@ -3,6 +3,11 @@
     <description>Provides access to payment transaction object and all its fields.</description>
     <fieldPermissions>
         <editable>true</editable>
+        <field>Payment_Transaction__c.Failure_Reason__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
         <field>Payment_Transaction__c.Payment_Method_Type__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -18,12 +23,27 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
+        <field>Payment_Transaction__c.Stripe_Invoice_ID__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Payment_Transaction__c.Stripe_Invoice__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
         <field>Payment_Transaction__c.Stripe_Payment_Intent_ID__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
         <field>Payment_Transaction__c.Stripe_Subscription__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Payment_Transaction__c.Transaction_Type__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>

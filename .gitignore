@@ -61,5 +61,3 @@ force-app/main/default/objects
 
 # Apex scripts
 /scripts/
-
-/force-app/main/default/objects
