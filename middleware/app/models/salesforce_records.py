@@ -85,41 +85,37 @@ class SalesforceInvoice(BaseModel):
     Stripe_Invoice_ID__c: str = Field(
         description="External ID - Stripe invoice ID"
     )
-    Stripe_Customer__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Customer__c (by External ID)"
-    )
     Stripe_Subscription__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Subscription__c (by External ID)"
+        None, description="Lookup to Stripe_Subscription__c"
+    )
+    Stripe_Customer__c: Optional[str] = Field(
+        None, description="Lookup to Stripe_Customer__c"
     )
     Amount__c: Optional[float] = None
-    Status__c: Optional[
-        Literal[
-            "draft",
-            "open",
-            "paid",
-            "uncollectible",
-            "void",
-        ]
-    ] = None
-    Due_Date__c: Optional[datetime] = None
+    Line_Items__c: Optional[str] = None
+    Invoice_PDF_URL__c: Optional[str] = None
     Period_Start__c: Optional[datetime] = None
     Period_End__c: Optional[datetime] = None
-    Discount_Applied__c: Optional[float] = None
+    Due_Date__c: Optional[datetime] = None
     Tax_Amount__c: Optional[float] = None
+    Discounts_Applied__c: Optional[float] = None
+    Status__c: Optional[
+        Literal["draft", "open", "paid", "uncollectible", "void"]
+    ] = None
+    Dunning_Status__c: Optional[
+        Literal["none", "trying", "exhausted"]
+    ] = "none"
 
     class Config:
         json_schema_extra = {
             "example": {
                 "Stripe_Invoice_ID__c": "in_ABC123",
-                "Stripe_Customer__c": "cus_ABC123",
                 "Stripe_Subscription__c": "sub_ABC123",
+                "Stripe_Customer__c": "cus_ABC123",
                 "Amount__c": 29.99,
-                "Status__c": "open",
-                "Due_Date__c": "2024-10-18T12:00:00Z",
-                "Period_Start__c": "2024-10-01T00:00:00Z",
-                "Period_End__c": "2024-10-31T23:59:59Z",
-                "Discount_Applied__c": 0.00,
-                "Tax_Amount__c": 0.00,
+                "Status__c": "paid",
+                "Tax_Amount__c": 2.50,
+                "Discounts_Applied__c": 5.00,
             }
         }
 
@@ -144,6 +140,7 @@ class SalesforcePaymentTransaction(BaseModel):
             "requires_capture",
             "canceled",
             "succeeded",
+            "failed",
         ]
     ] = None
     Payment_Method_Type__c: Optional[str] = None
@@ -151,6 +148,16 @@ class SalesforcePaymentTransaction(BaseModel):
     Stripe_Subscription__c: Optional[str] = Field(
         None, description="Lookup to Stripe_Subscription__c"
     )
+    Stripe_Invoice__c: Optional[str] = Field(
+        None, description="Lookup to Stripe_Invoice__c"
+    )
+    Stripe_Invoice_ID__c: Optional[str] = Field(
+        None, description="Stripe Invoice ID (for linking)"
+    )
+    Failure_Reason__c: Optional[str] = None
+    Transaction_Type__c: Optional[
+        Literal["initial_payment", "recurring_payment"]
+    ] = None
 
     class Config:
         json_schema_extra = {

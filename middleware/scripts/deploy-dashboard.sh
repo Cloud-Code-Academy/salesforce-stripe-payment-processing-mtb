@@ -38,7 +38,7 @@ if [ -z "$STACK_NAME" ]; then
 fi
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║       CloudWatch Dashboard Deployment                         ║${NC}"
+echo -e "${BLUE}║       CloudWatch Dashboard Deployment                          ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BLUE}Stack Name:${NC} $STACK_NAME"

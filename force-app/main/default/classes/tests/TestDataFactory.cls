@@ -76,7 +76,8 @@ public class TestDataFactory {
             customers.add(new Stripe_Customer__c(
                 Contact__c = contactId,
                 Customer_Email__c = 'customer' + i + '@example.com',
-                Customer_Phone__c = '+987654321' + i
+                Customer_Phone__c = '+987654321' + i,
+                Stripe_Customer_ID__c = 'cus_test' + i
             ));
         }
         insert customers;
