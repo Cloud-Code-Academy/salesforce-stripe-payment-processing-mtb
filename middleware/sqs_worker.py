@@ -102,10 +102,10 @@ async def process_sqs_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for record in records:
         try:
-            # Parse SQS message body (contains wrapper with event_data)
+            # Parse SQS message body (contains envelope with event data)
             message_body = json.loads(record["body"])
 
-            # Extract the actual Stripe event data from the wrapper
+            # Extract the Stripe event data from the message envelope
             event_data = message_body.get("event_data", message_body)
 
             # Process the event

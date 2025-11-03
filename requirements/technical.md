@@ -303,10 +303,42 @@ This project emphasizes real-world integration patterns including:
   - Reports and dashboards enabled
   - Sharing: ReadWrite
 
+#### Stripe Invoice (`Stripe_Invoice__c`)
+- **Name:** Auto-Number (INV-{000000}) - Invoice Number
+- **Stripe Invoice ID** (`Stripe_Invoice_ID__c`) - Text (External ID, Unique) - Maps to Stripe invoice ID
+- **Stripe Subscription** (`Stripe_Subscription__c`) - Lookup to Stripe_Subscription__c
+- **Stripe Customer** (`Stripe_Customer__c`) - Lookup to Stripe_Customer__c
+- **Amount** (`Amount__c`) - Currency - Total invoice amount
+- **Line Items** (`Line_Items__c`) - Long Text Area (32,768 characters) - JSON-formatted line items from Stripe
+- **Invoice PDF URL** (`Invoice_PDF_URL__c`) - URL - Link to Stripe-hosted invoice PDF
+- **Period Start** (`Period_Start__c`) - DateTime - Billing period start date
+- **Period End** (`Period_End__c`) - DateTime - Billing period end date
+- **Due Date** (`Due_Date__c`) - DateTime - Payment due date
+- **Tax Amount** (`Tax_Amount__c`) - Currency - Tax charged on invoice
+- **Discounts Applied** (`Discounts_Applied__c`) - Currency - Total discount amount
+- **Status** (`Status__c`) - Picklist with field history tracking:
+  - draft
+  - open
+  - paid
+  - uncollectible
+  - void
+- **Dunning Status** (`Dunning_Status__c`) - Picklist - Payment retry status:
+  - none (default)
+  - trying (Stripe is retrying payment)
+  - exhausted (All retry attempts failed)
+- **Object Settings:**
+  - Track field history enabled
+  - Reports and dashboards enabled
+  - Sharing: ReadWrite
+- **Purpose:** Tracks Stripe invoices for subscription billing cycles, enabling finance teams to monitor revenue, billing periods, and payment collection status
+
 #### Payment Transaction (`Payment_Transaction__c`)
 - **Name:** Auto-Number (PMT-{000000}) - Payment Transaction Number
 - **Stripe Payment Intent ID** (`Stripe_Payment_Intent_ID__c`) - Text (External ID, Unique)
 - **Stripe Customer** (`Stripe_Customer__c`) - Lookup to Stripe_Customer__c
+- **Stripe Subscription** (`Stripe_Subscription__c`) - Lookup to Stripe_Subscription__c
+- **Stripe Invoice** (`Stripe_Invoice__c`) - Lookup to Stripe_Invoice__c - Links payment to invoice
+- **Stripe Invoice ID** (`Stripe_Invoice_ID__c`) - Text - Stripe invoice identifier (for reference)
 - **Amount** (`Amount__c`) - Currency
 - **Currency** (`Currency__c`) - Text (3 characters)
 - **Status** (`Status__c`) - Picklist with field history tracking:
@@ -317,9 +349,13 @@ This project emphasizes real-world integration patterns including:
   - requires_capture
   - canceled
   - succeeded
+  - failed
 - **Payment Method Type** (`Payment_Method_Type__c`) - Text
 - **Transaction Date** (`Transaction_Date__c`) - DateTime
-- **Stripe Subscription** (`Stripe_Subscription__c`) - Lookup to Stripe_Subscription__c
+- **Transaction Type** (`Transaction_Type__c`) - Picklist:
+  - initial_payment (First payment for subscription)
+  - recurring_payment (Subscription renewal payment)
+- **Failure Reason** (`Failure_Reason__c`) - Text (500 characters) - Detailed failure message from Stripe
 - **Object Settings:**
   - Track field history enabled
   - Reports and dashboards enabled
@@ -359,11 +395,19 @@ This project emphasizes real-world integration patterns including:
 ```
 Contact (1) ----< (M) Stripe_Customer__c
 Stripe_Customer__c (1) ----< (M) Stripe_Subscription__c
+Stripe_Customer__c (1) ----< (M) Stripe_Invoice__c
 Stripe_Customer__c (1) ----< (M) Payment_Transaction__c
+Stripe_Subscription__c (1) ----< (M) Stripe_Invoice__c
 Stripe_Subscription__c (1) ----< (M) Payment_Transaction__c
 Stripe_Subscription__c (1) ----< (M) Pricing_Plan__c
+Stripe_Invoice__c (1) ----< (M) Payment_Transaction__c
 Pricing_Plan__c (1) ----< (M) Pricing_Tier__c (Master-Detail)
 ```
+
+**Invoice-Payment Relationship Pattern:**
+- Invoices are the parent billing documents
+- Payment Transactions are child records that track payment attempts
+- A single invoice can have multiple payment transactions (initial attempt + retries)
 
 **Key Design Patterns:**
 - **External IDs:** All Stripe objects use External ID fields for upsert operations from middleware
@@ -451,8 +495,8 @@ POST /webhook/stripe
 | `customer.subscription.deleted` | Subscription canceled | Update status to Canceled |
 | `payment_intent.succeeded` | Payment successful | Create Payment_Transaction__c record |
 | `payment_intent.payment_failed` | Payment failed | Create failed transaction record, log error |
-| `invoice.payment_succeeded` | Recurring payment succeeded | Update subscription, create transaction |
-| `invoice.payment_failed` | Recurring payment failed | Log failure, trigger dunning process |
+| `invoice.payment_succeeded` | Recurring payment succeeded | Create/update Stripe_Invoice__c (status=paid), create Payment_Transaction__c, update subscription billing period |
+| `invoice.payment_failed` | Recurring payment failed | Create/update Stripe_Invoice__c with dunning status, create failed Payment_Transaction__c, update subscription to past_due |
 
 **Salesforce Integration (from Middleware):**
 
@@ -597,6 +641,58 @@ POST /webhook/stripe
 - Chain Queueable jobs for complex workflows
 - Handle bulk webhook processing asynchronously
 - Stay within governor limits with proper bulkification
+
+**Invoice Automation (Salesforce-Side):**
+
+While invoice records are created by the middleware via webhooks, Salesforce-side automation is needed to maximize value for finance teams:
+
+**Required Trigger Framework:**
+- **StripeInvoiceTrigger.trigger** - Apex trigger on Stripe_Invoice__c (after insert, after update)
+- **StripeInvoiceTriggerHandler.cls** - Handler class following existing trigger pattern
+- **StripeInvoiceTriggerHelper.cls** - Helper class with business logic
+
+**Core Automation Capabilities:**
+
+1. **Revenue Rollup Calculations:**
+   - Aggregate invoice amounts to parent Customer and Subscription records
+   - Calculate Monthly Recurring Revenue (MRR) from subscription invoices
+   - Track total invoiced vs. total collected amounts
+   - Fields needed: `Stripe_Customer__c.Total_Revenue__c`, `Stripe_Subscription__c.Total_Invoiced__c`
+
+2. **Finance Team Notifications:**
+   - Send email alerts when `invoice.payment_failed` events occur
+   - High-priority notifications when `Dunning_Status__c = 'exhausted'`
+   - Include customer info, amount, and failure reason in notification
+   - Create follow-up Tasks for Customer Success team
+
+3. **Customer Health Scoring:**
+   - Calculate health score based on invoice payment patterns
+   - Track payment failure rate and days overdue average
+   - Update `Stripe_Customer__c.Health_Score__c` (0-100 scale)
+   - Flag customers with declining health trends
+
+4. **Churn Risk Detection:**
+   - Flag customers with 3+ failed invoices in 6 months
+   - Set `Stripe_Customer__c.Churn_Risk__c = true`
+   - Calculate churn probability score
+   - Trigger proactive retention workflows
+
+5. **Dunning Escalation:**
+   - Progress dunning status based on attempt count and time elapsed
+   - "none" → "trying" (1-4 attempts) → "exhausted" (5+ attempts)
+   - Escalate to collections team when exhausted
+   - Update collection status field
+
+6. **Batch Jobs for Maintenance:**
+   - **InvoiceCollectionBatch** - Daily job to identify overdue invoices
+   - **CustomerHealthScoreBatch** - Weekly recalculation of health scores
+   - **RevenueRollupBatch** - Nightly revenue reconciliation
+
+**Testing Requirements:**
+- Bulkified trigger testing (200+ invoice records)
+- Test rollup calculations with various invoice amounts
+- Test notification sending (with limits in mind)
+- Test health score calculations with different payment patterns
 
 ---
 
