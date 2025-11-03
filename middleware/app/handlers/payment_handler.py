@@ -92,6 +92,15 @@ class PaymentHandler:
         if "subscription_id" in metadata:
             salesforce_transaction.Stripe_Subscription__c = metadata["subscription_id"]
 
+        # Check if payment is associated with an invoice
+        stripe_invoice_id = payment_intent.get("invoice")
+        if stripe_invoice_id:
+            salesforce_transaction.Stripe_Invoice_ID__c = stripe_invoice_id
+            # Try to find and link the Salesforce invoice record
+            invoice_sf_id = await self._get_invoice_salesforce_id(stripe_invoice_id)
+            if invoice_sf_id:
+                salesforce_transaction.Stripe_Invoice__c = invoice_sf_id
+
         result = await salesforce_service.upsert_payment_transaction(
             salesforce_transaction
         )
@@ -101,6 +110,7 @@ class PaymentHandler:
             extra={
                 "payment_intent_id": payment_intent["id"],
                 "amount": payment_intent.get("amount"),
+                "invoice_id": stripe_invoice_id,
             },
         )
 
@@ -109,6 +119,7 @@ class PaymentHandler:
             "amount": payment_intent.get("amount", 0) / 100,
             "currency": payment_intent.get("currency"),
             "status": "succeeded",
+            "invoice_id": stripe_invoice_id,
             "salesforce_result": result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -187,6 +198,15 @@ class PaymentHandler:
         if "subscription_id" in metadata:
             salesforce_transaction.Stripe_Subscription__c = metadata["subscription_id"]
 
+        # Check if payment is associated with an invoice
+        stripe_invoice_id = payment_intent.get("invoice")
+        if stripe_invoice_id:
+            salesforce_transaction.Stripe_Invoice_ID__c = stripe_invoice_id
+            # Try to find and link the Salesforce invoice record
+            invoice_sf_id = await self._get_invoice_salesforce_id(stripe_invoice_id)
+            if invoice_sf_id:
+                salesforce_transaction.Stripe_Invoice__c = invoice_sf_id
+
         result = await salesforce_service.upsert_payment_transaction(
             salesforce_transaction
         )
@@ -196,6 +216,7 @@ class PaymentHandler:
             extra={
                 "payment_intent_id": payment_intent["id"],
                 "amount": payment_intent.get("amount"),
+                "invoice_id": stripe_invoice_id,
             },
         )
 
@@ -204,6 +225,7 @@ class PaymentHandler:
             "amount": payment_intent.get("amount", 0) / 100,
             "currency": payment_intent.get("currency"),
             "status": "failed",
+            "invoice_id": stripe_invoice_id,
             "error": payment_intent.get("last_payment_error"),
             "salesforce_result": result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -905,6 +927,41 @@ class PaymentHandler:
         except SalesforceAPIException as e:
             logger.error(f"Failed to query Stripe Customer {stripe_customer_id}: {str(e)}")
             raise
+
+    async def _get_invoice_salesforce_id(self, stripe_invoice_id: str) -> Optional[str]:
+        """
+        Query Salesforce for Stripe_Invoice__c record by Stripe Invoice ID.
+
+        Args:
+            stripe_invoice_id: Stripe invoice ID (e.g., 'in_xxx')
+
+        Returns:
+            Salesforce record ID of Stripe_Invoice__c or None if not found
+
+        Side Effects:
+            Logs warning if invoice not found (optional, may be created by separate webhook)
+        """
+        try:
+            query = (
+                f"SELECT Id FROM Stripe_Invoice__c "
+                f"WHERE Stripe_Invoice_ID__c = '{stripe_invoice_id}' "
+                f"LIMIT 1"
+            )
+            result = await salesforce_service.query(query)
+
+            if result.get("records"):
+                invoice_sf_id = result["records"][0]["Id"]
+                logger.info(f"Found Stripe Invoice: {invoice_sf_id} for {stripe_invoice_id}")
+                return invoice_sf_id
+            else:
+                # This is not necessarily an error - invoice may not yet exist if it's processed by separate webhook
+                logger.debug(f"Stripe Invoice not yet found in Salesforce: {stripe_invoice_id}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to query Stripe Invoice {stripe_invoice_id}: {str(e)}")
+            # Don't raise - return None to allow payment transaction to be created without invoice link
+            return None
 
     async def _update_subscription_period(
         self,

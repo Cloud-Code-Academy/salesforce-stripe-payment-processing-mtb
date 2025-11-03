@@ -31,8 +31,8 @@ public with sharing class InvoiceCollectionBatch implements Database.Batchable<S
 
         return Database.getQueryLocator([
             SELECT Id, Name, Stripe_Invoice_ID__c, Amount__c, Status__c,
-                   Dunning_Status__c, Due_Date__c, Stripe_Customer__c,
-                   Stripe_Subscription__c
+                   Dunning_Status__c, Due_Date__c, Stripe_Subscription__c,
+                   Stripe_Subscription__r.Stripe_Customer__c
             FROM Stripe_Invoice__c
             WHERE Due_Date__c < :overdueDate
                 AND Status__c IN ('open', 'uncollectible')
@@ -45,15 +45,16 @@ public with sharing class InvoiceCollectionBatch implements Database.Batchable<S
      */
     public void execute(Database.BatchableContext bc, List<Stripe_Invoice__c> scope) {
         try {
-            // Group invoices by customer for analysis
+            // Group invoices by customer for analysis (accessed via subscription relationship)
             Map<Id, List<Stripe_Invoice__c>> invoicesByCustomer = new Map<Id, List<Stripe_Invoice__c>>();
 
             for (Stripe_Invoice__c invoice : scope) {
-                if (invoice.Stripe_Customer__c != null) {
-                    if (!invoicesByCustomer.containsKey(invoice.Stripe_Customer__c)) {
-                        invoicesByCustomer.put(invoice.Stripe_Customer__c, new List<Stripe_Invoice__c>());
+                if (invoice.Stripe_Subscription__r?.Stripe_Customer__c != null) {
+                    Id customerId = invoice.Stripe_Subscription__r.Stripe_Customer__c;
+                    if (!invoicesByCustomer.containsKey(customerId)) {
+                        invoicesByCustomer.put(customerId, new List<Stripe_Invoice__c>());
                     }
-                    invoicesByCustomer.get(invoice.Stripe_Customer__c).add(invoice);
+                    invoicesByCustomer.get(customerId).add(invoice);
                 }
             }
 

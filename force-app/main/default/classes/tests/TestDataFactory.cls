@@ -109,22 +109,22 @@ public class TestDataFactory {
 
     /**
      * @description Creates test Stripe Invoice records
+     * Note: Customer relationship is established through the Subscription relationship,
+     * not directly on the Invoice. Invoices relate to Customers via:
+     * Invoice → Subscription → Customer
      * @param numberOfInvoices The number of Stripe Invoices to create
-     * @param customerId The Stripe Customer Id to associate
-     * @param subscriptionId The Stripe Subscription Id to associate (optional)
+     * @param subscriptionId The Stripe Subscription Id to associate
      * @param status The invoice status (default: 'paid')
      * @return List<Stripe_Invoice__c> List of created Stripe Invoices
      */
     public static List<Stripe_Invoice__c> createStripeInvoices(
         Integer numberOfInvoices,
-        Id customerId,
         Id subscriptionId,
         String status
     ) {
         List<Stripe_Invoice__c> invoices = new List<Stripe_Invoice__c>();
         for (Integer i = 0; i < numberOfInvoices; i++) {
             invoices.add(new Stripe_Invoice__c(
-                Stripe_Customer__c = customerId,
                 Stripe_Subscription__c = subscriptionId,
                 Stripe_Invoice_ID__c = 'inv_test' + i,
                 Amount__c = 29.99,
