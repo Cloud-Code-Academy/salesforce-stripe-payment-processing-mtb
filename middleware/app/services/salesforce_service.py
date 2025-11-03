@@ -33,9 +33,21 @@ class SalesforceService:
     """
     
     def __init__(self):
-        self.http_client = httpx.AsyncClient(timeout=30.0)
         self.api_version = settings.salesforce_api_version
         self.rate_limiter = get_rate_limiter()
+        self._http_client = None
+
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """
+        Get or create httpx AsyncClient.
+        Creates a fresh client for each use to avoid Lambda event loop issues.
+
+        Returns:
+            httpx.AsyncClient instance
+        """
+        # Create a new client for each request to avoid event loop issues in Lambda
+        limits = httpx.Limits(max_connections=1, max_keepalive_connections=1)
+        return httpx.AsyncClient(timeout=30.0, limits=limits)
     
     async def _get_api_url(self, endpoint: str = "") -> str:
         """
@@ -95,22 +107,10 @@ class SalesforceService:
         url = await self._get_api_url(endpoint)
         headers = await self._get_headers()
 
-        try:
-            response = await self.http_client.request(
-                method=method,
-                url=url,
-                headers=headers,
-                json=json_data,
-                params=params,
-            )
-
-            # Handle authentication errors
-            if response.status_code == 401:
-                logger.warning("Access token expired, refreshing...")
-                # Force token refresh and retry once
-                await salesforce_oauth.get_access_token(force_refresh=True)
-                headers = await self._get_headers()
-                response = await self.http_client.request(
+        # Create a new client for each request to avoid Lambda event loop issues
+        async with await self._get_http_client() as client:
+            try:
+                response = await client.request(
                     method=method,
                     url=url,
                     headers=headers,
@@ -118,41 +118,55 @@ class SalesforceService:
                     params=params,
                 )
 
-            # Check for errors
-            if response.status_code >= 400:
-                error_data = {}
-                try:
-                    error_data = response.json()
-                except Exception:
-                    error_data = {"message": response.text}
+                # Handle authentication errors
+                if response.status_code == 401:
+                    logger.warning("Access token expired, refreshing...")
+                    # Force token refresh and retry once
+                    await salesforce_oauth.get_access_token(force_refresh=True)
+                    headers = await self._get_headers()
+                    response = await client.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        json=json_data,
+                        params=params,
+                    )
 
-                logger.error(
-                    f"Salesforce API error: {response.status_code}",
-                    extra={
-                        "status_code": response.status_code,
-                        "endpoint": endpoint,
-                        "error": error_data,
-                    },
-                )
+                # Check for errors
+                if response.status_code >= 400:
+                    error_data = {}
+                    try:
+                        error_data = response.json()
+                    except Exception:
+                        error_data = {"message": response.text}
 
+                    logger.error(
+                        f"Salesforce API error: {response.status_code}",
+                        extra={
+                            "status_code": response.status_code,
+                            "endpoint": endpoint,
+                            "error": error_data,
+                        },
+                    )
+
+                    raise SalesforceAPIException(
+                        f"Salesforce API error: {error_data}",
+                        status_code=response.status_code,
+                        details={"error": error_data, "endpoint": endpoint},
+                    )
+
+                # Return JSON response for successful requests
+                if response.status_code != 204:  # No Content
+                    return response.json()
+
+                return None
+
+            except httpx.RequestError as e:
+                logger.error(f"Network error calling Salesforce API: {e}")
                 raise SalesforceAPIException(
-                    f"Salesforce API error: {error_data}",
-                    status_code=response.status_code,
-                    details={"error": error_data, "endpoint": endpoint},
-                )
-
-            # Return JSON response for successful requests
-            if response.status_code != 204:  # No Content
-                return response.json()
-
-            return None
-
-        except httpx.RequestError as e:
-            logger.error(f"Network error calling Salesforce API: {e}")
-            raise SalesforceAPIException(
-                f"Network error: {e}",
-                details={"error": str(e), "endpoint": endpoint},
-            ) from e
+                    f"Network error: {e}",
+                    details={"error": str(e), "endpoint": endpoint},
+                ) from e
 
     async def _make_api_call(
         self,
@@ -321,11 +335,41 @@ class SalesforceService:
         Returns:
             Upsert response
         """
+        # Exclude the external ID field from the request body
+        record_data = customer_data.model_dump(mode="json", exclude_none=True)
+        record_data.pop("Stripe_Customer_ID__c", None)
+
         return await self.upsert_record(
             sobject_type="Stripe_Customer__c",
             external_id_field="Stripe_Customer_ID__c",
             external_id_value=customer_data.Stripe_Customer_ID__c,
-            record_data=customer_data.model_dump(exclude_none=True),
+            record_data=record_data,
+        )
+
+    async def upsert_contact(self, contact_data: SalesforceContact) -> Dict[str, Any]:
+        """
+        Upsert Contact record using Stripe Customer ID as external ID.
+
+        Args:
+            contact_data: Contact data model
+
+        Returns:
+            Upsert response
+        """
+        if not contact_data.Stripe_Customer_ID__c:
+            raise SalesforceAPIException(
+                "Stripe_Customer_ID__c is required for upserting Contact",
+                details={"contact_data": contact_data.model_dump()},
+            )
+
+        # Parse name into FirstName and LastName if needed
+        record_data = contact_data.model_dump(mode="json", exclude_none=True)
+
+        return await self.upsert_record(
+            sobject_type="Contact",
+            external_id_field="Stripe_Customer_ID__c",
+            external_id_value=contact_data.Stripe_Customer_ID__c,
+            record_data=record_data,
         )
 
     async def upsert_contact(self, contact_data: SalesforceContact) -> Dict[str, Any]:
@@ -366,11 +410,15 @@ class SalesforceService:
         Returns:
             Upsert response
         """
+        # Exclude the external ID field from the request body
+        record_data = subscription_data.model_dump(mode="json", exclude_none=True)
+        record_data.pop("Stripe_Subscription_ID__c", None)
+
         return await self.upsert_record(
             sobject_type="Stripe_Subscription__c",
             external_id_field="Stripe_Subscription_ID__c",
             external_id_value=subscription_data.Stripe_Subscription_ID__c,
-            record_data=subscription_data.model_dump(exclude_none=True),
+            record_data=record_data,
         )
 
     async def upsert_payment_transaction(
@@ -385,11 +433,38 @@ class SalesforceService:
         Returns:
             Upsert response
         """
+        # Exclude the external ID field from the request body
+        record_data = transaction_data.model_dump(mode="json", exclude_none=True)
+        record_data.pop("Stripe_Payment_Intent_ID__c", None)
+
         return await self.upsert_record(
             sobject_type="Payment_Transaction__c",
             external_id_field="Stripe_Payment_Intent_ID__c",
             external_id_value=transaction_data.Stripe_Payment_Intent_ID__c,
-            record_data=transaction_data.model_dump(exclude_none=True),
+            record_data=record_data,
+        )
+
+    async def upsert_invoice(
+        self, invoice_data: "SalesforceInvoice"
+    ) -> Dict[str, Any]:
+        """
+        Upsert invoice record.
+
+        Args:
+            invoice_data: Invoice data model
+
+        Returns:
+            Upsert response
+        """
+        # Exclude the external ID field from the request body
+        record_data = invoice_data.model_dump(mode="json", exclude_none=True)
+        record_data.pop("Stripe_Invoice_ID__c", None)
+
+        return await self.upsert_record(
+            sobject_type="Stripe_Invoice__c",
+            external_id_field="Stripe_Invoice_ID__c",
+            external_id_value=invoice_data.Stripe_Invoice_ID__c,
+            record_data=record_data,
         )
 
     async def query(self, soql: str) -> Dict[str, Any]:

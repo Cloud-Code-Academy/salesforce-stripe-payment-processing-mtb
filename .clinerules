@@ -10,6 +10,28 @@ Always reference official Stripe API documentation: https://docs.stripe.com/api
 - Store API keys in Named Credentials or environment variables (never hardcode)
 - Use test mode keys (sk_test_..., pk_test_...) for development
 
+## Deployment & Git Workflow Policy
+**IMPORTANT: Require explicit approval before any deployments or commits**
+
+### Deployment Restrictions
+- **`sam deploy`**: REQUIRES EXPLICIT APPROVAL - Never auto-deploy Lambda functions
+- **`git commit`**: REQUIRES EXPLICIT APPROVAL - Only commit when explicitly requested
+- **`git add`**: REQUIRES EXPLICIT APPROVAL - Only stage changes when explicitly requested
+- **`git push`**: REQUIRES EXPLICIT APPROVAL - Never push to remote without confirmation
+
+### Code Changes Workflow
+1. Make code changes (allowed without approval)
+2. Build SAM template locally (`sam build` is allowed)
+3. **Ask user before deploying** - Describe what will change
+4. **Ask user before committing** - Only commit if explicitly requested
+5. Never batch multiple operational steps without approval
+
+### Configuration
+These restrictions are enforced in `.claude/settings.local.json`:
+- `sam deploy` commands moved to `ask` list
+- Git operations (`commit`, `push`, `add`) in `ask` list
+- This ensures approval is requested for all state-changing operations
+
 # Errors
 
 Stripe uses conventional HTTP response codes to indicate the success or failure of an API request. In general: Codes in the `2xx` range indicate success. Codes in the `4xx` range indicate an error that failed given the information provided (e.g., a required parameter was omitted, a charge failed, etc.). Codes in the `5xx` range indicate an error with Stripe’s servers (these are rare).

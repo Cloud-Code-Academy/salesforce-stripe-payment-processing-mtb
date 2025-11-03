@@ -76,11 +76,14 @@ Customer "1" -- "0..1" StripeCustomer : syncs to
 Subscription "1" -- "0..1" StripeSubscription : syncs to
 PaymentTransaction "1" -- "0..1" StripePaymentTransaction : syncs to
 
-Contact "1" *-- "0..1" StripeCustomer : linked to
-StripeCustomer "1" *-- "0..*" StripeSubscription 
-StripeSubscription "1" --> "1" PricingPlan : contains
-StripeSubscription "1" *-L- "0..*" StripeInvoice 
-StripeSubscription "1" <-- "0..*" StripePaymentTransaction : generates
+Contact "1" --o "0..1" StripeCustomer : linked to
+StripeCustomer "1" --> "0..*" StripeSubscription : has
+StripeCustomer "1" --> "0..*" StripeInvoice : has
+StripeSubscription "1" -l-> "1" PricingPlan : contains
+StripeSubscription "1" --> "0..*" StripeInvoice : generates
+StripeSubscription "1" <-- "0..*" StripePaymentTransaction : payment for
+StripeInvoice "1" --> "1" DunningStatus : has
+StripeInvoice "1" <-- "0..*" StripePaymentTransaction : paid by
 PricingPlan "1" --> "1" RecurrencyType : defines
 PricingPlan "1" *-- "0..*" PricingTier
 

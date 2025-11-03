@@ -206,6 +206,8 @@ public with sharing class ContactTriggerHelper {
         public void execute(QueueableContext context) {
             Integer successCount = 0;
             Integer failureCount = 0;
+            List<Contact> contactsToUpdateSalesforce = new List<Contact>();
+            List<Stripe_Customer__c> stripeCustomersToUpsert = new List<Stripe_Customer__c>();
 
             for (Contact cont : contactsToUpdate) {
                 try {
@@ -225,6 +227,23 @@ public with sharing class ContactTriggerHelper {
                     // Call Stripe API to update customer
                     String updatedCustomerId = StripeAPIService.updateCustomer(customerWrapper, cont.Stripe_Customer_ID__c);
 
+                    // Update Contact record with Stripe Customer ID (if not already set)
+                    Contact contactToUpdate = new Contact(
+                        Id = cont.Id,
+                        Stripe_Customer_ID__c = updatedCustomerId
+                    );
+                    contactsToUpdateSalesforce.add(contactToUpdate);
+
+                    // Create or update Stripe_Customer__c record to keep it in sync
+                    Stripe_Customer__c stripeCustomer = new Stripe_Customer__c(
+                        Contact__c = cont.Id,
+                        Stripe_Customer_ID__c = updatedCustomerId,
+                        Customer_Email__c = cont.Email,
+                        Customer_Name__c = customerName,
+                        Customer_Phone__c = cont.Phone
+                    );
+                    stripeCustomersToUpsert.add(stripeCustomer);
+
                     Logger.info('Successfully updated Stripe Customer: ' + updatedCustomerId)
                         .setMessage('Contact Id: ' + cont.Id)
                         .addTag('ContactTriggerHelper')
@@ -238,6 +257,53 @@ public with sharing class ContactTriggerHelper {
                         .setMessage('Stripe Customer ID: ' + cont.Stripe_Customer_ID__c + ', Error: ' + ex.getMessage())
                         .addTag('ContactTriggerHelper')
                         .addTag('Stripe-Update-Error');
+                    Logger.saveLog();
+                }
+            }
+
+            // Update Contact records in Salesforce
+            if (!contactsToUpdateSalesforce.isEmpty()) {
+                try {
+                    if (Schema.SObjectType.Contact.isUpdateable()) {
+                        SObjectAccessDecision decision = Security.stripInaccessible(
+                            AccessType.UPDATABLE,
+                            contactsToUpdateSalesforce
+                        );
+                        update decision.getRecords();
+                        Logger.info('Successfully updated ' + decision.getRecords().size() + ' Contact records in Salesforce')
+                            .addTag('ContactTriggerHelper')
+                            .addTag('Contact-Update-Success');
+                        Logger.saveLog();
+                    }
+                } catch (Exception ex) {
+                    Logger.error('Failed to update Contact records in Salesforce', ex)
+                        .setMessage('Error: ' + ex.getMessage())
+                        .addTag('ContactTriggerHelper')
+                        .addTag('Contact-Update-Error');
+                    Logger.saveLog();
+                }
+            }
+
+            // Upsert Stripe_Customer__c records using Stripe_Customer_ID__c as external ID
+            if (!stripeCustomersToUpsert.isEmpty()) {
+                try {
+                    if (Schema.SObjectType.Stripe_Customer__c.isUpdateable() && Schema.SObjectType.Stripe_Customer__c.isCreateable()) {
+                        SObjectAccessDecision decision = Security.stripInaccessible(
+                            AccessType.UPSERTABLE,
+                            stripeCustomersToUpsert
+                        );
+                        List<Stripe_Customer__c> stripeCustomersToProcess = decision.getRecords();
+                        upsert stripeCustomersToProcess Stripe_Customer__c.Stripe_Customer_ID__c;
+                        Logger.info('Successfully upserted ' + stripeCustomersToProcess.size() + ' Stripe_Customer__c records')
+                            .addTag('ContactTriggerHelper')
+                            .addTag('StripeCustomer-Upsert-Success');
+                        Logger.saveLog();
+                    }
+                } catch (Exception ex) {
+                    Logger.error('Failed to upsert Stripe_Customer__c records', ex)
+                        .setMessage('Error: ' + ex.getMessage())
+                        .addTag('ContactTriggerHelper')
+                        .addTag('StripeCustomer-Upsert-Error');
                     Logger.saveLog();
                 }
             }

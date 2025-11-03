@@ -70,7 +70,8 @@ EVENT_HANDLERS = {
     "payment_intent.succeeded": payment_handler.handle_payment_succeeded,
     "payment_intent.payment_failed": payment_handler.handle_payment_failed,
 
-    # Recurring payment (invoice) events
+    # Invoice events (all invoices tracked, regardless of payment status)
+    "invoice.created": payment_handler.handle_invoice_created,
     "invoice.payment_succeeded": payment_handler.handle_invoice_payment_succeeded,
     "invoice.payment_failed": payment_handler.handle_invoice_payment_failed,
 }

@@ -24,17 +24,23 @@ class SubscriptionHandler:
         Updates subscription status to Completed in Salesforce.
 
         Args:
-            event: Stripe webhook event
+            event: Stripe webhook event (dict or StripeEvent)
 
         Returns:
             Processing result
         """
-        session_data = event.event_object
+        # Handle both dict and StripeEvent object formats
+        if isinstance(event, dict):
+            event_id = event.get("id")
+            session_data = event["data"]["object"]
+        else:
+            event_id = event.id
+            session_data = event.event_object
 
         logger.info(
             f"Processing checkout.session.completed event",
             extra={
-                "event_id": event.id,
+                "event_id": event_id,
                 "session_id": session_data.get("id"),
                 "subscription_id": session_data.get("subscription"),
             },
@@ -79,17 +85,23 @@ class SubscriptionHandler:
         Updates subscription status to Failed/Expired in Salesforce.
 
         Args:
-            event: Stripe webhook event
+            event: Stripe webhook event (dict or StripeEvent)
 
         Returns:
             Processing result
         """
-        session_data = event.event_object
+        # Handle both dict and StripeEvent object formats
+        if isinstance(event, dict):
+            event_id = event.get("id")
+            session_data = event["data"]["object"]
+        else:
+            event_id = event.id
+            session_data = event.event_object
 
         logger.warning(
             f"Processing checkout.session.expired event",
             extra={
-                "event_id": event.id,
+                "event_id": event_id,
                 "session_id": session_data.get("id"),
                 "subscription_id": session_data.get("subscription"),
             },
@@ -131,17 +143,23 @@ class SubscriptionHandler:
         Handle customer.subscription.created event.
 
         Args:
-            event: Stripe webhook event
+            event: Stripe webhook event (dict or StripeEvent)
 
         Returns:
             Processing result
         """
-        subscription_data = event.event_object
+        # Handle both dict and StripeEvent object formats
+        if isinstance(event, dict):
+            event_id = event.get("id")
+            subscription_data = event["data"]["object"]
+        else:
+            event_id = event.id
+            subscription_data = event.event_object
 
         logger.info(
             f"Processing customer.subscription.created event",
             extra={
-                "event_id": event.id,
+                "event_id": event_id,
                 "subscription_id": subscription_data.get("id"),
             },
         )
@@ -151,9 +169,38 @@ class SubscriptionHandler:
         price_data = items[0] if items else {}
         price = price_data.get("price", {})
 
+        # Look up Salesforce customer ID using Stripe customer ID
+        stripe_customer_id = subscription_data.get("customer")
+        salesforce_customer_id = None
+
+        if stripe_customer_id:
+            try:
+                query = (
+                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
+                    f"LIMIT 1"
+                )
+                result = await salesforce_service.query(query)
+                if result.get("records"):
+                    salesforce_customer_id = result["records"][0]["Id"]
+                    logger.info(
+                        f"Found Salesforce customer for Stripe customer {stripe_customer_id}: {salesforce_customer_id}",
+                        extra={"stripe_customer_id": stripe_customer_id}
+                    )
+                else:
+                    logger.warning(
+                        f"Stripe customer not found in Salesforce: {stripe_customer_id}",
+                        extra={"stripe_customer_id": stripe_customer_id}
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to query Stripe customer: {str(e)}",
+                    extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
+                )
+
         salesforce_subscription = SalesforceSubscription(
             Stripe_Subscription_ID__c=subscription_data["id"],
-            Stripe_Customer__c=subscription_data.get("customer"),
+            Stripe_Customer__c=salesforce_customer_id,
             Status__c=subscription_data.get("status"),
             Current_Period_Start__c=datetime.fromtimestamp(
                 subscription_data["current_period_start"]
@@ -188,17 +235,23 @@ class SubscriptionHandler:
         Handle customer.subscription.updated event.
 
         Args:
-            event: Stripe webhook event
+            event: Stripe webhook event (dict or StripeEvent)
 
         Returns:
             Processing result
         """
-        subscription_data = event.event_object
+        # Handle both dict and StripeEvent object formats
+        if isinstance(event, dict):
+            event_id = event.get("id")
+            subscription_data = event["data"]["object"]
+        else:
+            event_id = event.id
+            subscription_data = event.event_object
 
         logger.info(
             f"Processing customer.subscription.updated event",
             extra={
-                "event_id": event.id,
+                "event_id": event_id,
                 "subscription_id": subscription_data.get("id"),
                 "status": subscription_data.get("status"),
             },
@@ -250,17 +303,23 @@ class SubscriptionHandler:
         Handle customer.subscription.deleted event.
 
         Args:
-            event: Stripe webhook event
+            event: Stripe webhook event (dict or StripeEvent)
 
         Returns:
             Processing result
         """
-        subscription_data = event.event_object
+        # Handle both dict and StripeEvent object formats
+        if isinstance(event, dict):
+            event_id = event.get("id")
+            subscription_data = event["data"]["object"]
+        else:
+            event_id = event.id
+            subscription_data = event.event_object
 
         logger.info(
             f"Processing customer.subscription.deleted event",
             extra={
-                "event_id": event.id,
+                "event_id": event_id,
                 "subscription_id": subscription_data.get("id"),
             },
         )
