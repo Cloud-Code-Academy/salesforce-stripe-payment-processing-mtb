@@ -70,6 +70,12 @@ package Salesforce {
         - UnitPrice: Currency
         - Discount: Percentage
     }
+
+    enum DunningStatus {
+        NONE
+        TRYING
+        EXHAUSTED
+    }
 }
 
 Customer "1" -- "0..1" StripeCustomer : syncs to
