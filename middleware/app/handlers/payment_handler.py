@@ -435,15 +435,12 @@ class PaymentHandler:
             invoice_data["customer_id"]
         )
 
-        # Create invoice record in Salesforce
-        invoice_sf_id = await self._create_invoice_record(
+        # Create invoice and payment transaction in a single Composite API call
+        result = await self._create_invoice_and_transaction_composite(
             invoice_data, subscription_sf_id, stripe_customer_sf_id
         )
-
-        # Create payment transaction linked to invoice
-        transaction_id = await self._create_payment_transaction(
-            invoice_data, subscription_sf_id, stripe_customer_sf_id, invoice_sf_id
-        )
+        invoice_sf_id = result["invoice_id"]
+        transaction_id = result["transaction_id"]
 
         # Update subscription period if available
         await self._update_subscription_period_if_needed(
@@ -625,12 +622,12 @@ class PaymentHandler:
             raise
 
     async def _update_subscription_period_if_needed(
-        self, 
-        invoice_data: Dict[str, Any], 
+        self,
+        invoice_data: Dict[str, Any],
         subscription_sf_id: Optional[str]
     ) -> None:
         """Update subscription period dates if all required data is available."""
-        if (invoice_data["subscription_id"] and subscription_sf_id and 
+        if (invoice_data["subscription_id"] and subscription_sf_id and
             invoice_data["period_start"] and invoice_data["period_end"]):
             await self._update_subscription_period(
                 subscription_id=invoice_data["subscription_id"],
@@ -638,6 +635,210 @@ class PaymentHandler:
                 period_start=invoice_data["period_start"],
                 period_end=invoice_data["period_end"]
             )
+
+    async def _create_invoice_and_transaction_composite(
+        self,
+        invoice_data: Dict[str, Any],
+        subscription_sf_id: Optional[str],
+        stripe_customer_sf_id: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        Create both Invoice and Payment Transaction in a single Composite API call.
+        This eliminates the need for sequential API calls and ensures the transaction
+        is properly linked to the invoice.
+
+        Args:
+            invoice_data: Extracted invoice data from Stripe
+            subscription_sf_id: Salesforce subscription ID
+            stripe_customer_sf_id: Salesforce customer ID
+
+        Returns:
+            Dictionary with:
+                - invoice_id: Salesforce ID of created Stripe_Invoice__c
+                - transaction_id: Salesforce ID of created Payment_Transaction__c
+
+        Raises:
+            SalesforceAPIException: If composite request fails
+        """
+        import json
+
+        # Prepare invoice record data
+        line_items_json = None
+        if invoice_data.get("line_items"):
+            line_items_json = json.dumps(invoice_data["line_items"])
+
+        invoice_record_data = {
+            "Stripe_Invoice_ID__c": invoice_data["invoice_id"],
+            "Stripe_Subscription__c": subscription_sf_id,
+            "Stripe_Customer__c": stripe_customer_sf_id,
+            "Amount__c": invoice_data.get("amount_paid"),
+            "Line_Items__c": line_items_json,
+            "Invoice_PDF_URL__c": invoice_data.get("pdf_url"),
+            "Status__c": "paid" if invoice_data.get("paid") else "open",
+            "Dunning_Status__c": "none"
+        }
+
+        # Add optional date fields
+        if invoice_data.get("period_start"):
+            invoice_record_data["Period_Start__c"] = datetime.fromtimestamp(
+                invoice_data["period_start"]
+            ).isoformat()
+        if invoice_data.get("period_end"):
+            invoice_record_data["Period_End__c"] = datetime.fromtimestamp(
+                invoice_data["period_end"]
+            ).isoformat()
+        if invoice_data.get("due_date"):
+            invoice_record_data["Due_Date__c"] = datetime.fromtimestamp(
+                invoice_data["due_date"]
+            ).isoformat()
+        if invoice_data.get("tax_amount"):
+            invoice_record_data["Tax_Amount__c"] = invoice_data["tax_amount"]
+        if invoice_data.get("discounts_applied"):
+            invoice_record_data["Discounts_Applied__c"] = invoice_data["discounts_applied"]
+
+        # Remove None values
+        invoice_record_data = {k: v for k, v in invoice_record_data.items() if v is not None}
+
+        # Prepare transaction record data
+        transaction_record_data = {
+            "Stripe_Payment_Intent_ID__c": invoice_data["payment_intent_id"],
+            "Stripe_Invoice_ID__c": invoice_data["invoice_id"],
+            "Amount__c": invoice_data["amount_paid"],
+            "Currency__c": invoice_data["currency"],
+            "Status__c": "succeeded",
+            "Payment_Method_Type__c": "card",
+            "Transaction_Date__c": datetime.now().isoformat(),
+            "Transaction_Type__c": "recurring_payment"
+        }
+
+        # Link to subscription and customer if found
+        if subscription_sf_id:
+            transaction_record_data["Stripe_Subscription__c"] = subscription_sf_id
+        if stripe_customer_sf_id:
+            transaction_record_data["Stripe_Customer__c"] = stripe_customer_sf_id
+
+        # Remove None values
+        transaction_record_data = {k: v for k, v in transaction_record_data.items() if v is not None}
+
+        # Call composite API
+        result = await salesforce_service.create_invoice_and_transaction_composite(
+            invoice_data=invoice_record_data,
+            transaction_data=transaction_record_data,
+            stripe_invoice_id=invoice_data["invoice_id"]
+        )
+
+        logger.info(
+            f"Created invoice and transaction via Composite API",
+            extra={
+                "invoice_id": result["invoice_id"],
+                "transaction_id": result["transaction_id"],
+                "stripe_invoice_id": invoice_data["invoice_id"]
+            }
+        )
+
+        return result
+
+    async def _create_failed_invoice_and_transaction_composite(
+        self,
+        invoice_data: Dict[str, Any],
+        subscription_sf_id: Optional[str],
+        stripe_customer_sf_id: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        Create both failed Invoice and Payment Transaction in a single Composite API call.
+        This eliminates the need for sequential API calls and ensures the transaction
+        is properly linked to the invoice.
+
+        Args:
+            invoice_data: Extracted failed invoice data from Stripe
+            subscription_sf_id: Salesforce subscription ID
+            stripe_customer_sf_id: Salesforce customer ID
+
+        Returns:
+            Dictionary with:
+                - invoice_id: Salesforce ID of created Stripe_Invoice__c
+                - transaction_id: Salesforce ID of created Payment_Transaction__c
+
+        Raises:
+            SalesforceAPIException: If composite request fails
+        """
+        import json
+
+        # Prepare invoice record data with dunning status
+        line_items_json = None
+        if invoice_data.get("line_items"):
+            line_items_json = json.dumps(invoice_data["line_items"])
+
+        # Determine dunning status based on attempt count
+        dunning_status = "trying" if invoice_data.get("attempt_count", 1) < 5 else "exhausted"
+
+        invoice_record_data = {
+            "Stripe_Invoice_ID__c": invoice_data["invoice_id"],
+            "Stripe_Subscription__c": subscription_sf_id,
+            "Stripe_Customer__c": stripe_customer_sf_id,
+            "Amount__c": invoice_data.get("amount_due"),
+            "Line_Items__c": line_items_json,
+            "Status__c": "open",
+            "Dunning_Status__c": dunning_status
+        }
+
+        # Add optional date fields
+        if invoice_data.get("period_start"):
+            invoice_record_data["Period_Start__c"] = datetime.fromtimestamp(
+                invoice_data["period_start"]
+            ).isoformat()
+        if invoice_data.get("period_end"):
+            invoice_record_data["Period_End__c"] = datetime.fromtimestamp(
+                invoice_data["period_end"]
+            ).isoformat()
+        if invoice_data.get("tax_amount"):
+            invoice_record_data["Tax_Amount__c"] = invoice_data["tax_amount"]
+        if invoice_data.get("discounts_applied"):
+            invoice_record_data["Discounts_Applied__c"] = invoice_data["discounts_applied"]
+
+        # Remove None values
+        invoice_record_data = {k: v for k, v in invoice_record_data.items() if v is not None}
+
+        # Prepare failed transaction record data
+        transaction_record_data = {
+            "Stripe_Payment_Intent_ID__c": invoice_data["payment_intent_id"],
+            "Stripe_Invoice_ID__c": invoice_data["invoice_id"],
+            "Amount__c": invoice_data["amount_due"],
+            "Currency__c": invoice_data["currency"],
+            "Status__c": "failed",
+            "Payment_Method_Type__c": "card",
+            "Transaction_Date__c": datetime.now().isoformat(),
+            "Transaction_Type__c": "recurring_payment",
+            "Failure_Reason__c": invoice_data["failure_message"]
+        }
+
+        # Link to subscription and customer if found
+        if subscription_sf_id:
+            transaction_record_data["Stripe_Subscription__c"] = subscription_sf_id
+        if stripe_customer_sf_id:
+            transaction_record_data["Stripe_Customer__c"] = stripe_customer_sf_id
+
+        # Remove None values
+        transaction_record_data = {k: v for k, v in transaction_record_data.items() if v is not None}
+
+        # Call composite API
+        result = await salesforce_service.create_invoice_and_transaction_composite(
+            invoice_data=invoice_record_data,
+            transaction_data=transaction_record_data,
+            stripe_invoice_id=invoice_data["invoice_id"]
+        )
+
+        logger.info(
+            f"Created failed invoice and transaction via Composite API",
+            extra={
+                "invoice_id": result["invoice_id"],
+                "transaction_id": result["transaction_id"],
+                "stripe_invoice_id": invoice_data["invoice_id"],
+                "dunning_status": dunning_status
+            }
+        )
+
+        return result
 
     async def handle_invoice_payment_failed(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -712,15 +913,12 @@ class PaymentHandler:
             invoice_data["customer_id"]
         )
 
-        # Create invoice record with dunning status
-        invoice_sf_id = await self._create_failed_invoice_record(
+        # Create invoice and failed payment transaction in a single Composite API call
+        result = await self._create_failed_invoice_and_transaction_composite(
             invoice_data, subscription_sf_id, stripe_customer_sf_id
         )
-
-        # Create failed payment transaction linked to invoice
-        transaction_id = await self._create_failed_payment_transaction(
-            invoice_data, subscription_sf_id, stripe_customer_sf_id, invoice_sf_id
-        )
+        invoice_sf_id = result["invoice_id"]
+        transaction_id = result["transaction_id"]
 
         # Update subscription status to past_due if needed
         if invoice_data["subscription_id"] and subscription_sf_id:
