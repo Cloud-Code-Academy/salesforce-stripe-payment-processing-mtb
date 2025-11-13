@@ -6,7 +6,7 @@
 public with sharing class StripeSubscriptionTriggerHelper {
     // Status constants for subscription sync
     private static final String STATUS_SEND_TO_STRIPE = 'Send to Stripe';
-    private static final String STATUS_SYNCED = 'Synced';
+    private static final String STATUS_SYNCED = 'Completed';
     private static final String STATUS_FAILED = 'Failed';
     /**
      * @description Processes subscription records marked for sync to Stripe. Identifies subscriptions with 'Send to Stripe'
@@ -80,7 +80,7 @@ public with sharing class StripeSubscriptionTriggerHelper {
     }
     /**
      * @description Processes successfully synced subscriptions to create Stripe Checkout Sessions. Identifies subscriptions
-     *              with 'Synced' status that have all required data and initiates asynchronous callouts to create a checkout
+     *              with 'Completed' status that have all required data and initiates asynchronous callouts to create a checkout
      *              session for payment collection. Enforces object-level read permissions.
      * @param newList List of updated Stripe_Subscription__c records
      * @param oldMap Map of Stripe_Subscription__c records before the update (Id to old record)

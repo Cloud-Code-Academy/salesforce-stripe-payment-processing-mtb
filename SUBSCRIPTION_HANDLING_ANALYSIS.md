@@ -40,11 +40,11 @@ The subscription object is the central data model for tracking Stripe subscripti
 | Field Name | Type | Allowed Values | Tracking | Default |
 |-----------|------|-----------------|----------|---------|
 | Status__c | Picklist | active, canceled, incomplete, incomplete_expired, past_due, trialing, unpaid | Yes | None |
-| Sync_Status__c | Picklist | Draft, Send to Stripe, Pending, Synced, Checkout Created, Failed | No | Draft |
+| Sync_Status__c | Picklist | Draft, Send to Stripe, Pending, Completed, Checkout Created, Failed | No | Draft |
 
 **Sync Status Flow:**
 ```
-Draft → Send to Stripe → Synced → Checkout Created → Completed
+Draft → Send to Stripe → Completed → Checkout Created → Completed
   ↓
   └─→ Failed (at any stage)
 ```
@@ -234,7 +234,7 @@ Update Salesforce Subscription:
   - Sync_Status__c = "Completed"
   ↓
 Changes Status from:
-  "Send to Stripe" → "Synced" → "Checkout Created" → "Completed"
+  "Send to Stripe" → "Completed" → "Checkout Created" → "Completed"
 ```
 
 #### 2.2.5 handle_checkout_expired
@@ -306,7 +306,7 @@ For each subscription record:
      - Enqueue StripeCalloutQueueable job
      - Job makes async callout to Stripe API
      - Stripe creates subscription and returns subscription.id
-     - Callout updates Sync_Status__c = "Synced"
+     - Callout updates Sync_Status__c = "Completed"
   5. If enqueue fails:
      - Set Sync_Status__c = "Failed"
      - Log error details
@@ -325,7 +325,7 @@ Response:
   ↓
 Update Stripe_Subscription__c:
     - Stripe_Subscription_ID__c = sub_xxx (now populated)
-    - Sync_Status__c = "Synced"
+    - Sync_Status__c = "Completed"
     - Status__c = subscription.status
 ```
 
@@ -338,7 +338,7 @@ Update Stripe_Subscription__c:
 After Update of Stripe_Subscription__c
   ↓
 For each subscription record:
-  1. Check if Sync_Status__c changed TO "Synced"
+  1. Check if Sync_Status__c changed TO "Completed"
   2. Verify:
      - Stripe_Subscription_ID__c is populated (subscription created)
      - Stripe_Price_ID__c exists (plan)
@@ -431,7 +431,7 @@ Send to Stripe
   ↓
   (Callout succeeds, subscription created in Stripe)
   ↓
-Synced
+Completed
   ↓
   (Checkout session creation callout)
   ↓
@@ -877,14 +877,14 @@ New Object: Stripe_Webhook_Event__c
         ┌──────────────────────────────────────┐
         │ Update Stripe_Subscription__c        │
         │ - Stripe_Subscription_ID__c = sub_xxx│
-        │ - Sync_Status__c = "Synced"          │
+        │ - Sync_Status__c = "Completed"          │
         │ - Status__c = "trialing"             │
         └──────────┬───────────────────────────┘
                    │
                    ▼ (TRIGGER FIRES AGAIN)
         ┌──────────────────────────────────────┐
         │ processStripeSubscriptionToCreateSess │
-        │ - Sync_Status__c changed to "Synced" │
+        │ - Sync_Status__c changed to "Completed" │
         │ - Enqueue checkout session creation  │
         └──────────┬───────────────────────────┘
                    │

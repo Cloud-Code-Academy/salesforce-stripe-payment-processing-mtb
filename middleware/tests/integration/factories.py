@@ -357,7 +357,7 @@ class SalesforceDataFactory:
             "Currency__c": "USD",
             "Billing_Period__c": "Monthly",
             "Start_Date__c": datetime.now(timezone.utc).date().isoformat(),
-            "Sync_Status__c": "Synced",
+            "Sync_Status__c": "Completed",
             "Last_Sync__c": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -384,7 +384,7 @@ class SalesforceDataFactory:
             "Currency__c": "USD",
             "Status__c": status,
             "Payment_Date__c": datetime.now(timezone.utc).isoformat(),
-            "Sync_Status__c": "Synced",
+            "Sync_Status__c": "Completed",
         }
 
 
