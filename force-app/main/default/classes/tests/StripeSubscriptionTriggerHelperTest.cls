@@ -39,20 +39,19 @@ public class StripeSubscriptionTriggerHelperTest {
             Test.setMock(HttpCalloutMock.class, new StripeAPISubscriptionSuccessMock());
             Contact customerContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'Testov'
-            );
-            insert customerContact;
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+                LastName = 'Testov',
+                Email = 'test4@example.com',
+                Phone = '+1234567894',
                 Customer_Email__c = 'test4@example.com',
                 Customer_Phone__c = '+1234567894',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
-            insert customer;
+            insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
             );
             insert subscriptionRec;
@@ -87,20 +86,19 @@ public class StripeSubscriptionTriggerHelperTest {
             Test.setMock(HttpCalloutMock.class, new StripeAPISubscriptionSuccessMock());
             Contact customerContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'Testov'
-            );
-            insert customerContact;
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+                LastName = 'Testov',
+                Email = 'test4@example.com',
+                Phone = '+1234567894',
                 Customer_Email__c = 'test4@example.com',
                 Customer_Phone__c = '+1234567894',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
-            insert customer;
+            insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customer.Id
+                Stripe_Customer__c = customerContact.Id
             );
             insert subscriptionRec;
             subscriptionRec = [SELECT Id, Stripe_Price_ID__c, StripeCustomerId__c, CustomerDefaultPayment__c, Sync_Status__c
@@ -136,20 +134,19 @@ public class StripeSubscriptionTriggerHelperTest {
             Test.setMock(HttpCalloutMock.class, new StripeAPISessionSuccessMock());
             Contact customerContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'Testov'
-            );
-            insert customerContact;
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+                LastName = 'Testov',
+                Email = 'test4@example.com',
+                Phone = '+1234567894',
                 Customer_Email__c = 'test4@example.com',
                 Customer_Phone__c = '+1234567894',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
-            insert customer;
+            insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 Sync_Status__c = 'Completed'
             );
             insert subscriptionRec;
@@ -181,20 +178,19 @@ public class StripeSubscriptionTriggerHelperTest {
         System.runAs(testUser){
             Contact customerContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'Testov'
-            );
-            insert customerContact;
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+                LastName = 'Testov',
+                Email = 'test4@example.com',
+                Phone = '+1234567894',
                 Customer_Email__c = 'test4@example.com',
                 Customer_Phone__c = '+1234567894',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
-            insert customer;
+            insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 Sync_Status__c = 'Completed'
             );
             insert subscriptionRec;
@@ -244,21 +240,22 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void processStripeSubscriptionAfterUpdate_missingPriceId_skipped() {
         System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'Missing');
-            insert customerContact;
-
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+            Contact customerContact = new Contact(
+                FirstName = 'Test',
+                LastName = 'Missing',
+                Email = 'missing@example.com',
+                Phone = '+1234567890',
                 Customer_Email__c = 'missing@example.com',
                 Customer_Phone__c = '+1234567890',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test Missing',
                 Stripe_Customer_ID__c = 'cus_test123',
                 Default_Payment_Method__c = 'pm_test123'
             );
-            insert customer;
+            insert customerContact;
 
             // Create subscription without Stripe_Price_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
                 // Missing Stripe_Price_ID__c
             );
@@ -306,22 +303,23 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void processStripeSubscriptionAfterUpdate_missingPaymentMethod_skipped() {
         System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'NoPayment');
-            insert customerContact;
-
             // Customer without Default_Payment_Method__c
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+            Contact customerContact = new Contact(
+                FirstName = 'Test',
+                LastName = 'NoPayment',
+                Email = 'nopayment@example.com',
+                Phone = '+1234567890',
                 Customer_Email__c = 'nopayment@example.com',
                 Customer_Phone__c = '+1234567890',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test NoPayment',
                 Stripe_Customer_ID__c = 'cus_nopayment'
                 // Missing Default_Payment_Method__c
             );
-            insert customer;
+            insert customerContact;
 
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
             );
 
@@ -343,22 +341,23 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void processStripeSubscriptionAfterUpdate_alreadySynced_skipped() {
         System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'Completed');
-            insert customerContact;
-
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+            Contact customerContact = new Contact(
+                FirstName = 'Test',
+                LastName = 'Completed',
+                Email = 'synced@example.com',
+                Phone = '+1234567890',
                 Customer_Email__c = 'synced@example.com',
                 Customer_Phone__c = '+1234567890',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test Completed',
                 Stripe_Customer_ID__c = 'cus_synced',
                 Default_Payment_Method__c = 'pm_synced'
             );
-            insert customer;
+            insert customerContact;
 
             // Create subscription with existing Stripe_Subscription_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 Stripe_Subscription_ID__c = 'sub_existing123',
                 Sync_Status__c = 'Send to Stripe'
             );
@@ -400,21 +399,22 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void processStripeSubscriptionToCreateSession_missingSubscriptionId_skipped() {
         System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'NoSubId');
-            insert customerContact;
-
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+            Contact customerContact = new Contact(
+                FirstName = 'Test',
+                LastName = 'NoSubId',
+                Email = 'nosubid@example.com',
+                Phone = '+1234567890',
                 Customer_Email__c = 'nosubid@example.com',
                 Customer_Phone__c = '+1234567890',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test NoSubId',
                 Stripe_Customer_ID__c = 'cus_nosubid'
             );
-            insert customer;
+            insert customerContact;
 
             // Create subscription without Stripe_Subscription_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 Sync_Status__c = 'Completed'
                 // Missing Stripe_Subscription_ID__c
             );
@@ -456,20 +456,21 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void createPricingPlansUponSelection_missingMetadata_noError() {
         System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'NoMetadata');
-            insert customerContact;
-
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+            Contact customerContact = new Contact(
+                FirstName = 'Test',
+                LastName = 'NoMetadata',
+                Email = 'nometadata@example.com',
+                Phone = '+1234567890',
                 Customer_Email__c = 'nometadata@example.com',
                 Customer_Phone__c = '+1234567890',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test NoMetadata',
                 Stripe_Customer_ID__c = 'cus_nometadata'
             );
-            insert customer;
+            insert customerContact;
 
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customer.Id
+                Stripe_Customer__c = customerContact.Id
             );
             insert subscriptionRec;
 
@@ -499,20 +500,21 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void createPricingPlansUponSelection_unchangedPricingPlans_skipped() {
         System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'Unchanged');
-            insert customerContact;
-
-            Stripe_Customer__c customer = new Stripe_Customer__c(
+            Contact customerContact = new Contact(
+                FirstName = 'Test',
+                LastName = 'Unchanged',
+                Email = 'unchanged@example.com',
+                Phone = '+1234567890',
                 Customer_Email__c = 'unchanged@example.com',
                 Customer_Phone__c = '+1234567890',
-                Contact__c = customerContact.Id,
+                Customer_Name__c = 'Test Unchanged',
                 Stripe_Customer_ID__c = 'cus_unchanged'
             );
-            insert customer;
+            insert customerContact;
 
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customer.Id,
+                Stripe_Customer__c = customerContact.Id,
                 PricingPlans__c = 'Basic_Week'
             );
             insert subscriptionRec;
@@ -545,16 +547,17 @@ public class StripeSubscriptionTriggerHelperTest {
         System.runAs(getTestUser()) {
             Test.setMock(HttpCalloutMock.class, new StripeAPISubscriptionSuccessMock());
 
-            Contact customerContact = new Contact(FirstName = 'Bulk', LastName = 'Test');
-            insert customerContact;
-
-            // Create multiple customers
-            List<Stripe_Customer__c> customers = new List<Stripe_Customer__c>();
+            // Create multiple customers as Contacts with Stripe data
+            List<Contact> customers = new List<Contact>();
             for (Integer i = 0; i < 3; i++) {
-                customers.add(new Stripe_Customer__c(
+                customers.add(new Contact(
+                    FirstName = 'Bulk',
+                    LastName = 'Test ' + i,
+                    Email = 'bulk' + i + '@example.com',
+                    Phone = '+123456789' + i,
                     Customer_Email__c = 'bulk' + i + '@example.com',
                     Customer_Phone__c = '+123456789' + i,
-                    Contact__c = customerContact.Id,
+                    Customer_Name__c = 'Bulk Test ' + i,
                     Stripe_Customer_ID__c = 'cus_bulk' + i,
                     Default_Payment_Method__c = 'pm_bulk' + i
                 ));

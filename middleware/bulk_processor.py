@@ -555,12 +555,12 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
     customer_failed = False
     contact_failed = False
 
-    # Step 1: Submit Stripe_Customer__c records
+    # Step 1: Submit Contact records with Stripe customer data
     try:
         logger.critical(
-            f"[BULK_API_JOB_CREATE] Creating Bulk API job for Stripe_Customer__c upsert",
+            f"[BULK_API_JOB_CREATE] Creating Bulk API job for Contact upsert (Stripe customer data)",
             extra={
-                "object_name": "Stripe_Customer__c",
+                "object_name": "Contact",
                 "operation": "upsert",
                 "external_id_field": "Stripe_Customer_ID__c",
                 "record_count": len(customer_records),
@@ -569,7 +569,7 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
         )
 
         result = await bulk_service.upsert_records(
-            object_name="Stripe_Customer__c",
+            object_name="Contact",
             records=customer_records,
             external_id_field="Stripe_Customer_ID__c",
             wait_for_completion=True  # Wait for results
@@ -584,7 +584,7 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
         records_failed = status.get("numberRecordsFailed", 0)
 
         logger.critical(
-            f"[BULK_API_JOB_COMPLETED] Stripe_Customer__c bulk job completed!",
+            f"[BULK_API_JOB_COMPLETED] Contact (Stripe customer data) bulk job completed!",
             extra={
                 "job_id": job_id,
                 "job_state": status.get("state", "unknown"),
@@ -600,7 +600,7 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
         failed_results = [r for r in results if not r.get("success")]
         if failed_results:
             logger.warning(
-                f"[BULK_API_FAILURES] {len(failed_results)} records failed in Stripe_Customer__c bulk job",
+                f"[BULK_API_FAILURES] {len(failed_results)} records failed in Contact bulk job",
                 extra={
                     "job_id": job_id,
                     "failed_count": len(failed_results)

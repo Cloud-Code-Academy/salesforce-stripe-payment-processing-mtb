@@ -12,13 +12,8 @@ private class CustomerHealthScoreBatchTest {
 
         // Run as test user to create test data
         System.runAs(testUser) {
-            // Create test Contacts
-            List<Contact> contacts = TestDataFactory.createContacts(3);
-
-            // Create test Stripe Customers
-            for (Contact contact : contacts) {
-                TestDataFactory.createStripeCustomers(1, contact.Id);
-            }
+            // Create test Contacts with Stripe customer data
+            TestDataFactory.createStripeCustomers(3);
         }
     }
 
@@ -33,12 +28,12 @@ private class CustomerHealthScoreBatchTest {
     @isTest
     static void testCustomerHealthScoreBatch_PerfectPaymentHistory() {
         System.runAs(getTestUser()) {
-            // Get test customers
-            List<Stripe_Customer__c> customers = [SELECT Id FROM Stripe_Customer__c];
+            // Get test contacts
+            List<Contact> contacts = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null];
 
-            // Create subscriptions and paid invoices for each customer
-            for (Stripe_Customer__c customer : customers) {
-                Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+            // Create subscriptions and paid invoices for each contact
+            for (Contact contact : contacts) {
+                Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, contact.Id)[0];
                 TestDataFactory.createStripeInvoices(5, subscription.Id, 'paid');
             }
 
@@ -49,9 +44,9 @@ private class CustomerHealthScoreBatchTest {
             Test.stopTest();
 
             // Verify health scores are calculated correctly
-            customers = [SELECT Id, Health_Score__c FROM Stripe_Customer__c];
-            for (Stripe_Customer__c customer : customers) {
-                Assert.areEqual(100, customer.Health_Score__c, 'Health score should be 100 for perfect payment history');
+            contacts = [SELECT Id, Health_Score__c FROM Contact WHERE Stripe_Customer_ID__c != null];
+            for (Contact contact : contacts) {
+                Assert.areEqual(100, contact.Health_Score__c, 'Health score should be 100 for perfect payment history');
             }
         }
     }
@@ -62,9 +57,9 @@ private class CustomerHealthScoreBatchTest {
     @isTest
     static void testCustomerHealthScoreBatch_MixedPaymentHistory() {
         System.runAs(getTestUser()) {
-            // Get first customer
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
-            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+            // Get first contact
+            Contact contact = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null LIMIT 1];
+            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, contact.Id)[0];
 
             // Create mixed invoice history: 3 paid, 1 failed, 1 exhausted
             TestDataFactory.createStripeInvoices(3, subscription.Id, 'paid');
@@ -94,20 +89,20 @@ private class CustomerHealthScoreBatchTest {
             Test.stopTest();
 
             // Verify health score is reduced
-            customer = [SELECT Id, Health_Score__c FROM Stripe_Customer__c WHERE Id = :customer.Id];
-            Assert.isTrue(customer.Health_Score__c < 60, 'Health score should be reduced for mixed payment history');
-            Assert.isTrue(customer.Health_Score__c >= 0, 'Health score should not be negative');
+            contact = [SELECT Id, Health_Score__c FROM Contact WHERE Id = :contact.Id];
+            Assert.isTrue(contact.Health_Score__c < 60, 'Health score should be reduced for mixed payment history');
+            Assert.isTrue(contact.Health_Score__c >= 0, 'Health score should not be negative');
         }
     }
 
     /**
-     * Test batch with customers having no invoices
+     * Test batch with contacts having no invoices
      */
     @isTest
     static void testCustomerHealthScoreBatch_NoInvoices() {
         System.runAs(getTestUser()) {
-            // Get customers (no invoices created)
-            List<Stripe_Customer__c> customers = [SELECT Id, Health_Score__c FROM Stripe_Customer__c];
+            // Get contacts (no invoices created)
+            List<Contact> contacts = [SELECT Id, Health_Score__c FROM Contact WHERE Stripe_Customer_ID__c != null];
 
             // Run batch job
             Test.startTest();
@@ -115,12 +110,12 @@ private class CustomerHealthScoreBatchTest {
             Database.executeBatch(batch);
             Test.stopTest();
 
-            // Verify customers with no invoices are handled properly
-            customers = [SELECT Id, Health_Score__c FROM Stripe_Customer__c];
-            for (Stripe_Customer__c customer : customers) {
-                // Health score should remain null or unchanged for customers with no invoices
-                Assert.isTrue(customer.Health_Score__c == null || customer.Health_Score__c == 0,
-                    'Health score should be null or 0 for customers with no invoices');
+            // Verify contacts with no invoices are handled properly
+            contacts = [SELECT Id, Health_Score__c FROM Contact WHERE Stripe_Customer_ID__c != null];
+            for (Contact contact : contacts) {
+                // Health score should remain null or unchanged for contacts with no invoices
+                Assert.isTrue(contact.Health_Score__c == null || contact.Health_Score__c == 0,
+                    'Health score should be null or 0 for contacts with no invoices');
             }
         }
     }
@@ -131,9 +126,9 @@ private class CustomerHealthScoreBatchTest {
     @isTest
     static void testCustomerHealthScoreBatch_Schedulable() {
         System.runAs(getTestUser()) {
-            // Get test customer
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
-            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+            // Get test contact
+            Contact contact = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null LIMIT 1];
+            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, contact.Id)[0];
             TestDataFactory.createStripeInvoices(2, subscription.Id, 'paid');
 
             // Schedule the batch job
@@ -160,18 +155,18 @@ private class CustomerHealthScoreBatchTest {
     @isTest
     static void testCustomerHealthScoreBatch_LargeDataVolume() {
         System.runAs(getTestUser()) {
-            // Get all customers
-            List<Stripe_Customer__c> customers = [SELECT Id FROM Stripe_Customer__c];
+            // Get all contacts
+            List<Contact> contacts = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null];
 
-            // Create subscriptions and multiple invoices for each customer
-            for (Stripe_Customer__c customer : customers) {
-                Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+            // Create subscriptions and multiple invoices for each contact
+            for (Contact contact : contacts) {
+                Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, contact.Id)[0];
 
-                // Create 10 invoices per customer with varying statuses
+                // Create 10 invoices per contact with varying statuses
                 for (Integer i = 0; i < 10; i++) {
                     Stripe_Invoice__c invoice = new Stripe_Invoice__c(
                         Stripe_Subscription__c = subscription.Id,
-                        Stripe_Invoice_ID__c = 'inv_' + customer.Id + '_' + i,
+                        Stripe_Invoice_ID__c = 'inv_' + contact.Id + '_' + i,
                         Amount__c = 29.99,
                         Status__c = Math.mod(i, 3) == 0 ? 'uncollectible' : 'paid',
                         Dunning_Status__c = Math.mod(i, 5) == 0 ? 'exhausted' : 'none'
@@ -186,9 +181,9 @@ private class CustomerHealthScoreBatchTest {
             Database.executeBatch(batch, 50);
             Test.stopTest();
 
-            // Verify all customers have health scores calculated
-            customers = [SELECT Id, Health_Score__c FROM Stripe_Customer__c WHERE Health_Score__c != null];
-            Assert.areEqual(3, customers.size(), 'All customers with invoices should have health scores calculated');
+            // Verify all contacts have health scores calculated
+            contacts = [SELECT Id, Health_Score__c FROM Contact WHERE Stripe_Customer_ID__c != null AND Health_Score__c != null];
+            Assert.areEqual(3, contacts.size(), 'All contacts with invoices should have health scores calculated');
         }
     }
 
@@ -198,9 +193,9 @@ private class CustomerHealthScoreBatchTest {
     @isTest
     static void testCustomerHealthScoreBatch_ErrorHandling() {
         System.runAs(getTestUser()) {
-            // Get test customer
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
-            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+            // Get test contact
+            Contact contact = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null LIMIT 1];
+            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, contact.Id)[0];
 
             // Create invoices
             TestDataFactory.createStripeInvoices(3, subscription.Id, 'paid');
@@ -212,8 +207,8 @@ private class CustomerHealthScoreBatchTest {
             Test.stopTest();
 
             // Verify batch completed without throwing exceptions
-            customer = [SELECT Id, Health_Score__c FROM Stripe_Customer__c WHERE Id = :customer.Id];
-            Assert.isNotNull(customer, 'Customer record should still exist');
+            contact = [SELECT Id, Health_Score__c FROM Contact WHERE Id = :contact.Id];
+            Assert.isNotNull(contact, 'Contact record should still exist');
         }
     }
 }

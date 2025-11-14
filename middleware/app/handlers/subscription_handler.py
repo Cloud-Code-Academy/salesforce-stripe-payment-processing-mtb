@@ -80,12 +80,12 @@ class SubscriptionHandler:
                     extra={"session_id": session_id, "error": str(e)}
                 )
 
-        # Look up Salesforce Customer ID (Stripe_Customer__c is a lookup field, needs SF record ID not Stripe ID)
+        # Look up Salesforce Contact ID (Stripe_Customer__c now points to Contact.Id)
         salesforce_customer_id = None
         if stripe_customer_id:
             try:
                 query = (
-                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"SELECT Id FROM Contact "
                     f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
                     f"LIMIT 1"
                 )
@@ -233,7 +233,7 @@ class SubscriptionHandler:
         if stripe_customer_id:
             try:
                 query = (
-                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"SELECT Id FROM Contact "
                     f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
                     f"LIMIT 1"
                 )
@@ -326,7 +326,7 @@ class SubscriptionHandler:
         if stripe_customer_id:
             try:
                 query = (
-                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"SELECT Id FROM Contact "
                     f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
                     f"LIMIT 1"
                 )

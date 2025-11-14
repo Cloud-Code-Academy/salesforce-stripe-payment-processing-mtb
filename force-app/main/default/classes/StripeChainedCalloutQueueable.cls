@@ -30,7 +30,7 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
      * @description Constructor for payment method creation callouts. Initializes the queueable job to create and attach
      *              a default payment method to a Stripe customer.
      * @param customerId Stripe customer ID to associate with the payment method
-     * @param recordId Salesforce record ID of the Stripe_Customer__c record to update with payment method details
+     * @param recordId Salesforce record ID of the Contact record to update with payment method details
      */
     public StripeChainedCalloutQueueable(
         String customerId,
@@ -95,31 +95,31 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
         }
     }
     /**
-     * @description Updates a Stripe_Customer__c record with the default payment method ID returned from a successful
+     * @description Updates a Contact record with the default payment method ID returned from a successful
      *              API callout. Enforces object-level and field-level security before performing the update operation.
-     * @param recordId Salesforce ID of the Stripe_Customer__c record to update
+     * @param recordId Salesforce ID of the Contact record to update
      * @param defaultMethodId Stripe payment method ID to store as the default payment method
      */
     private void updateCustomer(Id recordId, String defaultMethodId){
-        Stripe_Customer__c customer = new Stripe_Customer__c(
+        Contact contact = new Contact(
             Id = recordId,
             Default_Payment_Method__c = defaultMethodId
         );
-        //Check whether Stripe_Customer__c object is available for update
-        if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
-            //Check whether Stripe_Customer_ID__c field of Stripe_Customer__c object is available for update
-            if (Schema.SObjectType.Stripe_Customer__c.fields.Default_Payment_Method__c.isUpdateable()) {
+        //Check whether Contact object is available for update
+        if (Schema.SObjectType.Contact.isUpdateable()) {
+            //Check whether Default_Payment_Method__c field of Contact object is available for update
+            if (Schema.SObjectType.Contact.fields.Default_Payment_Method__c.isUpdateable()) {
                 try {
-                    update as user customer;
+                    update as user contact;
                 } catch (Exception ex) {
-                    Logger.error('Error occured while updating Stripe Customer record: ', ex);
+                    Logger.error('Error occured while updating Contact record: ', ex);
                     Logger.saveLog();
                 }
             } else {
-                throw new SecurityException('Default_Payment_Method__c field of Stripe_Customer__c is not available for update');
+                throw new SecurityException('Default_Payment_Method__c field of Contact is not available for update');
             }
         } else {
-            throw new SecurityException('Stripe_Customer__c object is not available for update');
+            throw new SecurityException('Contact object is not available for update');
         }
     }
 }

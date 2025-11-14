@@ -23,7 +23,7 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
     /**
      * @description Constructor for customer creation callouts. Initializes the queueable job to create a Stripe customer
      *              using the provided contact information.
-     * @param recordId Salesforce record ID of the Stripe_Customer__c record to update after creation
+     * @param recordId Salesforce record ID of the Contact record to update after creation
      * @param customerName Full name of the customer
      * @param customerEmail Email address of the customer
      * @param customerPhone Phone number of the customer
@@ -115,7 +115,7 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
                     System.enqueueJob(new StripeChainedCalloutQueueable(customerId, recordId));
                 }
             } catch (Exception ex) {
-                Logger.error('Failed to get customerId/update Stripe Customer record: ', ex);
+                Logger.error('Failed to get customerId/update Contact record: ', ex);
                 Logger.saveLog();
             }
         } else if (calloutType == CREATE_PRODUCT) {
@@ -151,31 +151,31 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         }
     }
     /**
-     * @description Updates a Stripe_Customer__c record with the Stripe customer ID returned from a successful API callout.
+     * @description Updates a Contact record with the Stripe customer ID returned from a successful API callout.
      *              Enforces object-level and field-level security before performing the update operation.
-     * @param recordId Salesforce ID of the Stripe_Customer__c record to update
+     * @param recordId Salesforce ID of the Contact record to update
      * @param customerId Stripe customer ID to store in the record
      */
     private void updateStripeCustomer(Id recordId, String customerId){
-        Stripe_Customer__c customer = new Stripe_Customer__c(
+        Contact contact = new Contact(
             Id = recordId,
             Stripe_Customer_ID__c = customerId
         );
-        //Check whether Stripe_Customer__c object is available for update
-        if (Schema.SObjectType.Stripe_Customer__c.isUpdateable()) {
-            //Check whether Stripe_Customer_ID__c field of Stripe_Customer__c object is available for update
-            if (Schema.SObjectType.Stripe_Customer__c.fields.Stripe_Customer_ID__c.isUpdateable()) {
+        //Check whether Contact object is available for update
+        if (Schema.SObjectType.Contact.isUpdateable()) {
+            //Check whether Stripe_Customer_ID__c field of Contact object is available for update
+            if (Schema.SObjectType.Contact.fields.Stripe_Customer_ID__c.isUpdateable()) {
                 try {
-                    update as user customer;
+                    update as user contact;
                 } catch (Exception ex) {
-                    Logger.error('Error occured while updating Stripe Customer record: ', ex);
+                    Logger.error('Error occured while updating Contact record: ', ex);
                     Logger.saveLog();
                 }
             } else {
-                throw new SecurityException('Stripe_Customer_ID__c field of Stripe_Customer__c is not available for update');
+                throw new SecurityException('Stripe_Customer_ID__c field of Contact is not available for update');
             }
         } else {
-            throw new SecurityException('Stripe_Customer__c object is not available for update');
+            throw new SecurityException('Contact object is not available for update');
         }
     }
     /**
