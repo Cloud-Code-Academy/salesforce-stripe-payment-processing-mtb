@@ -54,7 +54,7 @@ class PaymentHandler:
         if stripe_customer_id:
             try:
                 query = (
-                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"SELECT Id FROM Contact "
                     f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
                     f"LIMIT 1"
                 )
@@ -160,7 +160,7 @@ class PaymentHandler:
         if stripe_customer_id:
             try:
                 query = (
-                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"SELECT Id FROM Contact "
                     f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
                     f"LIMIT 1"
                 )
@@ -284,7 +284,7 @@ class PaymentHandler:
             if stripe_customer_id:
                 try:
                     query = (
-                        f"SELECT Id FROM Stripe_Customer__c "
+                        f"SELECT Id FROM Contact "
                         f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
                         f"LIMIT 1"
                     )
@@ -292,7 +292,7 @@ class PaymentHandler:
                     if result.get("records"):
                         salesforce_customer_id = result["records"][0]["Id"]
                         logger.info(
-                            f"Found Salesforce customer for Stripe customer {stripe_customer_id}: {salesforce_customer_id}",
+                            f"Found Salesforce contact for Stripe customer {stripe_customer_id}: {salesforce_customer_id}",
                             extra={"stripe_customer_id": stripe_customer_id}
                         )
                     else:
@@ -501,10 +501,10 @@ class PaymentHandler:
         return subscription_sf_id, stripe_customer_sf_id
 
     async def _query_subscription_record(self, subscription_id: str) -> tuple[Optional[str], Optional[str]]:
-        """Query Salesforce for subscription record and return subscription and customer IDs."""
+        """Query Salesforce for subscription record and return subscription and Contact IDs."""
         try:
             query = (
-                f"SELECT Id, Stripe_Customer__c, Stripe_Customer__r.Id "
+                f"SELECT Id, Stripe_Customer__c "
                 f"FROM Stripe_Subscription__c "
                 f"WHERE Stripe_Subscription_ID__c = '{subscription_id}' "
                 f"LIMIT 1"
@@ -514,8 +514,8 @@ class PaymentHandler:
             if subscription_result.get("records"):
                 subscription_record = subscription_result["records"][0]
                 subscription_sf_id = subscription_record["Id"]
-                stripe_customer_sf_id = subscription_record.get("Stripe_Customer__c")
-                logger.info(f"Found subscription: {subscription_sf_id} with customer: {stripe_customer_sf_id}")
+                stripe_customer_sf_id = subscription_record.get("Stripe_Customer__c")  # Now contains Contact.Id
+                logger.info(f"Found subscription: {subscription_sf_id} with contact: {stripe_customer_sf_id}")
                 return subscription_sf_id, stripe_customer_sf_id
             else:
                 logger.warning(f"Subscription not found in Salesforce: {subscription_id}")
@@ -1101,14 +1101,14 @@ class PaymentHandler:
             stripe_customer_id: Stripe customer ID (e.g., 'cus_xxx')
 
         Returns:
-            Salesforce record ID of Stripe_Customer__c or None if not found
+            Salesforce Contact record ID or None if not found
 
         Raises:
             SalesforceAPIException: If SOQL query fails
         """
         try:
             query = (
-                f"SELECT Id FROM Stripe_Customer__c "
+                f"SELECT Id FROM Contact "
                 f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
                 f"LIMIT 1"
             )
@@ -1116,14 +1116,14 @@ class PaymentHandler:
 
             if result.get("records"):
                 customer_sf_id = result["records"][0]["Id"]
-                logger.info(f"Found Stripe Customer: {customer_sf_id} for {stripe_customer_id}")
+                logger.info(f"Found Contact: {customer_sf_id} for Stripe customer {stripe_customer_id}")
                 return customer_sf_id
             else:
-                logger.warning(f"Stripe Customer not found in Salesforce: {stripe_customer_id}")
+                logger.warning(f"Contact not found in Salesforce for Stripe customer: {stripe_customer_id}")
                 return None
 
         except SalesforceAPIException as e:
-            logger.error(f"Failed to query Stripe Customer {stripe_customer_id}: {str(e)}")
+            logger.error(f"Failed to query Contact for Stripe customer {stripe_customer_id}: {str(e)}")
             raise
 
     async def _get_invoice_salesforce_id(self, stripe_invoice_id: str) -> Optional[str]:

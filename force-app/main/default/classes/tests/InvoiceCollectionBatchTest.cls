@@ -12,14 +12,11 @@ private class InvoiceCollectionBatchTest {
 
         // Run as test user to create test data
         System.runAs(testUser) {
-            // Create test Contact
-            Contact testContact = TestDataFactory.createContacts(1)[0];
-
-            // Create test Stripe Customer
-            Stripe_Customer__c customer = TestDataFactory.createStripeCustomers(1, testContact.Id)[0];
+            // Create test Contact with Stripe customer data
+            Contact testContact = TestDataFactory.createStripeCustomers(1)[0];
 
             // Create test Stripe Subscription
-            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, customer.Id)[0];
+            Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, testContact.Id)[0];
         }
     }
 
@@ -35,7 +32,7 @@ private class InvoiceCollectionBatchTest {
     static void testInvoiceCollectionBatch_ProcessOverdueInvoices() {
         System.runAs(getTestUser()) {
             // Get test data
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
+            Contact contact = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null LIMIT 1];
             Stripe_Subscription__c subscription = [SELECT Id FROM Stripe_Subscription__c LIMIT 1];
 
             // Create overdue invoices
@@ -77,7 +74,7 @@ private class InvoiceCollectionBatchTest {
     static void testInvoiceCollectionBatch_NoOverdueInvoices() {
         System.runAs(getTestUser()) {
             // Get test data
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
+            Contact contact = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null LIMIT 1];
             Stripe_Subscription__c subscription = [SELECT Id FROM Stripe_Subscription__c LIMIT 1];
 
             // Create current invoices (not overdue)
@@ -109,7 +106,7 @@ private class InvoiceCollectionBatchTest {
     static void testInvoiceCollectionBatch_Schedulable() {
         System.runAs(getTestUser()) {
             // Get test data
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
+            Contact contact = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null LIMIT 1];
             Stripe_Subscription__c subscription = [SELECT Id FROM Stripe_Subscription__c LIMIT 1];
 
             // Create test invoices
@@ -142,7 +139,7 @@ private class InvoiceCollectionBatchTest {
     static void testInvoiceCollectionBatch_MixedStatuses() {
         System.runAs(getTestUser()) {
             // Get test data
-            Stripe_Customer__c customer = [SELECT Id FROM Stripe_Customer__c LIMIT 1];
+            Contact contact = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null LIMIT 1];
             Stripe_Subscription__c subscription = [SELECT Id FROM Stripe_Subscription__c LIMIT 1];
 
             // Create invoices with different statuses

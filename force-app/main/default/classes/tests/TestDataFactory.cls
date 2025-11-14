@@ -65,22 +65,72 @@ public class TestDataFactory {
     }
 
     /**
-     * @description Creates test Stripe Customer records
-     * @param numberOfCustomers The number of Stripe Customers to create
-     * @param contactId The Contact Id to associate (optional)
-     * @return List<Stripe_Customer__c> List of created Stripe Customers
+     * @description Creates test Contact records with Stripe customer data
+     * @param numberOfCustomers The number of Contacts with Stripe data to create
+     * @return List<Contact> List of created Contacts with Stripe customer data
      */
-    public static List<Stripe_Customer__c> createStripeCustomers(Integer numberOfCustomers, Id contactId) {
-        List<Stripe_Customer__c> customers = new List<Stripe_Customer__c>();
+    public static List<Contact> createStripeCustomers(Integer numberOfCustomers) {
+        List<Contact> contacts = new List<Contact>();
         for (Integer i = 0; i < numberOfCustomers; i++) {
-            customers.add(new Stripe_Customer__c(
-                Contact__c = contactId,
+            contacts.add(new Contact(
+                FirstName = 'Stripe',
+                LastName = 'Customer ' + i,
+                Email = 'customer' + i + '@example.com',
+                Phone = '+987654321' + i,
                 Customer_Email__c = 'customer' + i + '@example.com',
+                Customer_Name__c = 'Stripe Customer ' + i,
                 Customer_Phone__c = '+987654321' + i,
-                Stripe_Customer_ID__c = 'cus_test' + i
+                Stripe_Customer_ID__c = 'cus_test' + i,
+                Subscription_Status__c = 'None'
             ));
         }
-        insert customers;
-        return customers;
+        insert contacts;
+        return contacts;
+    }
+
+    /**
+     * @description Creates test Stripe_Subscription__c records
+     * @param numberOfSubscriptions The number of subscriptions to create
+     * @param contactId The Contact Id to associate with subscriptions
+     * @return List<Stripe_Subscription__c> List of created subscriptions
+     */
+    public static List<Stripe_Subscription__c> createStripeSubscriptions(Integer numberOfSubscriptions, Id contactId) {
+        List<Stripe_Subscription__c> subscriptions = new List<Stripe_Subscription__c>();
+        for (Integer i = 0; i < numberOfSubscriptions; i++) {
+            subscriptions.add(new Stripe_Subscription__c(
+                Stripe_Customer__c = contactId,
+                Stripe_Subscription_ID__c = 'sub_test' + i,
+                Status__c = 'active',
+                Product_Plan_Name__c = 'Test Plan ' + i
+            ));
+        }
+        insert subscriptions;
+        return subscriptions;
+    }
+
+    /**
+     * @description Creates test Stripe_Invoice__c records
+     * @param numberOfInvoices The number of invoices to create
+     * @param subscriptionId The Stripe_Subscription__c Id to associate with invoices
+     * @param status The status of the invoices
+     * @return List<Stripe_Invoice__c> List of created invoices
+     */
+    public static List<Stripe_Invoice__c> createStripeInvoices(Integer numberOfInvoices, Id subscriptionId, String status) {
+        // Get the subscription to find the contact
+        Stripe_Subscription__c sub = [SELECT Stripe_Customer__c FROM Stripe_Subscription__c WHERE Id = :subscriptionId LIMIT 1];
+
+        List<Stripe_Invoice__c> invoices = new List<Stripe_Invoice__c>();
+        for (Integer i = 0; i < numberOfInvoices; i++) {
+            invoices.add(new Stripe_Invoice__c(
+                Stripe_Subscription__c = subscriptionId,
+                Stripe_Customer__c = sub.Stripe_Customer__c,
+                Stripe_Invoice_ID__c = 'inv_test' + i + '_' + System.now().getTime(),
+                Amount__c = 29.99,
+                Status__c = status,
+                Due_Date__c = Date.today()
+            ));
+        }
+        insert invoices;
+        return invoices;
     }
 }

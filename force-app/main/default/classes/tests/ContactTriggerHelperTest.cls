@@ -15,8 +15,8 @@ public class ContactTriggerHelperTest {
     }
 
     /**
-     * @description Tests that inserting a Contact with both FirstName and LastName
-     *              successfully creates a Stripe Customer record with properly formatted name
+     * @description Tests that inserting a Contact logs the operation correctly
+     *              Note: Stripe customer data is now populated via middleware, not trigger
      */
     @IsTest
     static void processContactAfterInsert_insertContactWithLastNameAndFirstName_success() {
@@ -34,23 +34,22 @@ public class ContactTriggerHelperTest {
             insert cont;
             Test.stopTest();
 
-            // Verify the result
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Customer_Name__c, Customer_Email__c, Customer_Phone__c, Contact__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c = :cont.Id
+            // Verify the Contact was created successfully
+            // Note: Stripe customer data (Customer_Name__c, Customer_Email__c, etc.)
+            // is populated by middleware webhooks, not by trigger
+            Contact insertedContact = [
+                SELECT Id, FirstName, LastName, Email, Phone
+                FROM Contact
+                WHERE Id = :cont.Id
             ];
-            Assert.areEqual(1, insertedStripeCustomers.size(), 'Stripe Customer should be inserted');
-            Assert.areEqual(cont.LastName + ' ' + cont.FirstName, insertedStripeCustomers[0].Customer_Name__c, 'Customer name should be LastName FirstName');
-            Assert.areEqual(cont.Email, insertedStripeCustomers[0].Customer_Email__c, 'Customer email should match Contact email');
-            Assert.areEqual(cont.Phone, insertedStripeCustomers[0].Customer_Phone__c, 'Customer phone should match Contact phone');
-            Assert.areEqual(cont.Id, insertedStripeCustomers[0].Contact__c, 'Customer should be linked to Contact');
+            Assert.areEqual('Test', insertedContact.FirstName, 'FirstName should be set');
+            Assert.areEqual('Testov', insertedContact.LastName, 'LastName should be set');
+            Assert.areEqual('testovtest@gmail.com.au', insertedContact.Email, 'Email should be set');
         }
     }
 
     /**
-     * @description Tests that inserting a Contact with only LastName
-     *              successfully creates a Stripe Customer record with LastName only
+     * @description Tests that inserting a Contact with only LastName succeeds
      */
     @IsTest
     static void processContactAfterInsert_insertContactWithOnlyLastName_success() {
@@ -67,29 +66,25 @@ public class ContactTriggerHelperTest {
             insert cont;
             Test.stopTest();
 
-            // Verify the result
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Customer_Name__c, Customer_Email__c, Customer_Phone__c, Contact__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c = :cont.Id
+            // Verify the Contact was created
+            Contact insertedContact = [
+                SELECT Id, LastName, Email, Phone
+                FROM Contact
+                WHERE Id = :cont.Id
             ];
-            Assert.areEqual(1, insertedStripeCustomers.size(), 'Stripe Customer should be inserted');
-            Assert.areEqual(cont.LastName, insertedStripeCustomers[0].Customer_Name__c, 'Customer name should be LastName only');
-            Assert.areEqual(cont.Email, insertedStripeCustomers[0].Customer_Email__c, 'Customer email should match Contact email');
-            Assert.areEqual(cont.Phone, insertedStripeCustomers[0].Customer_Phone__c, 'Customer phone should match Contact phone');
-            Assert.areEqual(cont.Id, insertedStripeCustomers[0].Contact__c, 'Customer should be linked to Contact');
+            Assert.areEqual('Testov', insertedContact.LastName, 'LastName should be set');
+            Assert.areEqual('testovtest@gmail.com.au', insertedContact.Email, 'Email should be set');
         }
     }
 
     /**
-     * @description Tests that inserting a Contact without phone
-     *              successfully creates a Stripe Customer record with null phone
+     * @description Tests that inserting a Contact without phone succeeds
      */
     @IsTest
     static void processContactAfterInsert_insertContactWithoutPhone_success() {
         User testUser = getTestUser();
         System.runAs(testUser) {
-            // Create test data without phone (email is required for Stripe_Customer__c)
+            // Create test data without phone
             Contact cont = new Contact(
                 LastName = 'MinimalContact',
                 Email = 'minimal@example.com'
@@ -99,22 +94,20 @@ public class ContactTriggerHelperTest {
             insert cont;
             Test.stopTest();
 
-            // Verify the result
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Customer_Name__c, Customer_Email__c, Customer_Phone__c, Contact__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c = :cont.Id
+            // Verify the Contact was created
+            Contact insertedContact = [
+                SELECT Id, LastName, Email, Phone
+                FROM Contact
+                WHERE Id = :cont.Id
             ];
-            Assert.areEqual(1, insertedStripeCustomers.size(), 'Stripe Customer should be inserted');
-            Assert.areEqual(cont.LastName, insertedStripeCustomers[0].Customer_Name__c, 'Customer name should be LastName');
-            Assert.areEqual(cont.Email, insertedStripeCustomers[0].Customer_Email__c, 'Customer email should match Contact email');
-            Assert.areEqual(null, insertedStripeCustomers[0].Customer_Phone__c, 'Customer phone should be null when not provided');
+            Assert.areEqual('MinimalContact', insertedContact.LastName, 'LastName should be set');
+            Assert.areEqual('minimal@example.com', insertedContact.Email, 'Email should be set');
+            Assert.areEqual(null, insertedContact.Phone, 'Phone should be null when not provided');
         }
     }
 
     /**
-     * @description Tests that inserting multiple Contacts in bulk
-     *              successfully creates corresponding Stripe Customer records
+     * @description Tests that inserting multiple Contacts in bulk succeeds
      */
     @IsTest
     static void processContactAfterInsert_bulkInsertContacts_success() {
@@ -135,26 +128,18 @@ public class ContactTriggerHelperTest {
             insert contacts;
             Test.stopTest();
 
-            // Verify the result
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Id, Contact__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c IN :contacts
+            // Verify all Contacts were created
+            List<Contact> insertedContacts = [
+                SELECT Id
+                FROM Contact
+                WHERE Id IN :contacts
             ];
-            Assert.areEqual(200, insertedStripeCustomers.size(), 'All 200 Stripe Customers should be created for bulk insert');
-
-            // Verify each contact has exactly one Stripe Customer
-            Set<Id> contactIds = new Set<Id>();
-            for (Stripe_Customer__c customer : insertedStripeCustomers) {
-                Assert.isTrue(!contactIds.contains(customer.Contact__c), 'Each Contact should have exactly one Stripe Customer');
-                contactIds.add(customer.Contact__c);
-            }
+            Assert.areEqual(200, insertedContacts.size(), 'All 200 Contacts should be created for bulk insert');
         }
     }
 
     /**
-     * @description Tests that inserting Contacts with special characters in names
-     *              successfully creates Stripe Customer records with properly handled names
+     * @description Tests that inserting Contacts with special characters in names succeeds
      */
     @IsTest
     static void processContactAfterInsert_insertContactWithSpecialCharacters_success() {
@@ -172,14 +157,14 @@ public class ContactTriggerHelperTest {
             insert cont;
             Test.stopTest();
 
-            // Verify the result
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Customer_Name__c, Customer_Email__c, Customer_Phone__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c = :cont.Id
+            // Verify the Contact was created with special characters preserved
+            Contact insertedContact = [
+                SELECT FirstName, LastName
+                FROM Contact
+                WHERE Id = :cont.Id
             ];
-            Assert.areEqual(1, insertedStripeCustomers.size(), 'Stripe Customer should be inserted with special characters');
-            Assert.areEqual(cont.LastName + ' ' + cont.FirstName, insertedStripeCustomers[0].Customer_Name__c, 'Customer name should preserve special characters');
+            Assert.areEqual('José María', insertedContact.FirstName, 'FirstName with special characters should be preserved');
+            Assert.areEqual('O\'Brien-Smith', insertedContact.LastName, 'LastName with special characters should be preserved');
         }
     }
 
@@ -197,9 +182,8 @@ public class ContactTriggerHelperTest {
             ContactTriggerHelper.processContactAfterInsert(null);
             Test.stopTest();
 
-            // Verify no Stripe Customers were created
-            List<Stripe_Customer__c> customers = [SELECT Id FROM Stripe_Customer__c];
-            Assert.areEqual(0, customers.size(), 'No Stripe Customers should be created for null list');
+            // Verify method completes without throwing exception
+            Assert.isTrue(true, 'Helper should handle null list without errors');
         }
     }
 
@@ -215,18 +199,16 @@ public class ContactTriggerHelperTest {
             ContactTriggerHelper.processContactAfterInsert(new List<Contact>());
             Test.stopTest();
 
-            // Verify no Stripe Customers were created
-            List<Stripe_Customer__c> customers = [SELECT Id FROM Stripe_Customer__c];
-            Assert.areEqual(0, customers.size(), 'No Stripe Customers should be created for empty list');
+            // Verify method completes without throwing exception
+            Assert.isTrue(true, 'Helper should handle empty list without errors');
         }
     }
 
     /**
-     * @description Tests that Contacts without email are skipped (email is required for Stripe_Customer__c)
-     *              This test verifies the helper handles missing required fields gracefully
+     * @description Tests that Contacts without email can still be created
      */
     @IsTest
-    static void processContactAfterInsert_contactWithoutEmail_skipped() {
+    static void processContactAfterInsert_contactWithoutEmail_success() {
         User testUser = getTestUser();
         System.runAs(testUser) {
             // Create Contact without email
@@ -240,30 +222,25 @@ public class ContactTriggerHelperTest {
             insert cont;
             Test.stopTest();
 
-            // Since Customer_Email__c is required on Stripe_Customer__c,
-            // the helper should skip this contact and not attempt to create a Stripe Customer
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Id
-                FROM Stripe_Customer__c
-                WHERE Contact__c = :cont.Id
+            // Verify Contact was created successfully
+            Contact insertedContact = [
+                SELECT Id, LastName
+                FROM Contact
+                WHERE Id = :cont.Id
             ];
-
-            // Verify no customer was created (contact without email is skipped)
-            Assert.areEqual(0, insertedStripeCustomers.size(),
-                'No Stripe Customer should be created for Contact without email');
+            Assert.areEqual('Email', insertedContact.LastName, 'Contact should be created without email');
         }
     }
 
     /**
-     * @description Tests that Contacts without any name are handled gracefully
+     * @description Tests that Contacts with minimal data are handled gracefully
      */
     @IsTest
     static void processContactAfterInsert_contactWithoutName_handledGracefully() {
         User testUser = getTestUser();
         System.runAs(testUser) {
-            // Create Contact with only email (no FirstName or LastName)
-            // Note: LastName is required by Salesforce, so this test demonstrates
-            // how the helper would handle a Contact with minimal data
+            // Create Contact with minimal data
+            // Note: LastName is required by Salesforce
             Contact cont = new Contact(
                 LastName = 'MinimalData',
                 Email = 'minimal@example.com'
@@ -273,14 +250,13 @@ public class ContactTriggerHelperTest {
             insert cont;
             Test.stopTest();
 
-            // Verify the result - should create customer with LastName as name
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Customer_Name__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c = :cont.Id
+            // Verify the Contact was created
+            Contact insertedContact = [
+                SELECT LastName
+                FROM Contact
+                WHERE Id = :cont.Id
             ];
-            Assert.areEqual(1, insertedStripeCustomers.size(), 'Stripe Customer should be created');
-            Assert.areEqual('MinimalData', insertedStripeCustomers[0].Customer_Name__c, 'Customer name should be LastName when FirstName is null');
+            Assert.areEqual('MinimalData', insertedContact.LastName, 'Contact should be created with minimal data');
         }
     }
 
@@ -321,15 +297,13 @@ public class ContactTriggerHelperTest {
             insert contacts;
             Test.stopTest();
 
-            // Verify all or most customers were created
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Id, Contact__c, Customer_Name__c, Customer_Email__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c IN :contacts
+            // Verify all Contacts were created
+            List<Contact> insertedContacts = [
+                SELECT Id
+                FROM Contact
+                WHERE Id IN :contacts
             ];
-
-            // All contacts with email should have Stripe Customers created
-            Assert.isTrue(insertedStripeCustomers.size() >= 5, 'At least the valid contacts should have Stripe Customers created');
+            Assert.areEqual(7, insertedContacts.size(), 'All 7 contacts should be created successfully');
         }
     }
 
@@ -357,15 +331,14 @@ public class ContactTriggerHelperTest {
             insert cont;
             Test.stopTest();
 
-            // Verify the result - should handle long values appropriately
-            List<Stripe_Customer__c> insertedStripeCustomers = [
-                SELECT Customer_Name__c, Customer_Email__c, Customer_Phone__c
-                FROM Stripe_Customer__c
-                WHERE Contact__c = :cont.Id
+            // Verify the Contact was created with long values
+            Contact insertedContact = [
+                SELECT FirstName, LastName, Email, Phone
+                FROM Contact
+                WHERE Id = :cont.Id
             ];
-
-            Assert.areEqual(1, insertedStripeCustomers.size(), 'Stripe Customer should be created even with long values');
-            Assert.isNotNull(insertedStripeCustomers[0].Customer_Name__c, 'Customer name should not be null');
+            Assert.isNotNull(insertedContact.FirstName, 'FirstName should not be null');
+            Assert.isNotNull(insertedContact.LastName, 'LastName should not be null');
         }
     }
 

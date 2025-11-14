@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class SalesforceCustomer(BaseModel):
-    """Salesforce Stripe_Customer__c record"""
+    """Deprecated: Use SalesforceContact instead. Maintained for backward compatibility."""
 
     Stripe_Customer_ID__c: str = Field(description="External ID - Stripe customer ID")
     Customer_Email__c: Optional[str] = None
@@ -41,7 +41,7 @@ class SalesforceSubscription(BaseModel):
         description="External ID - Stripe subscription ID"
     )
     Stripe_Customer__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Customer__c (by External ID)"
+        None, description="Lookup to Contact (Contact.Id)"
     )
     PricingPlans__c: Optional[str] = None
     Stripe_Price_ID__c: Optional[str] = None
@@ -71,7 +71,7 @@ class SalesforceSubscription(BaseModel):
         json_schema_extra = {
             "example": {
                 "Stripe_Subscription_ID__c": "sub_ABC123",
-                "Stripe_Customer__c": "cus_ABC123",
+                "Stripe_Customer__c": "0031700000IZ3STABC",
                 "Status__c": "active",
                 "Amount__c": 29.99,
                 "Currency__c": "USD",
@@ -89,7 +89,7 @@ class SalesforceInvoice(BaseModel):
         None, description="Lookup to Stripe_Subscription__c"
     )
     Stripe_Customer__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Customer__c"
+        None, description="Lookup to Contact (Contact.Id)"
     )
     Line_Items__c: Optional[str] = None
     Invoice_PDF_URL__c: Optional[str] = None
@@ -110,7 +110,7 @@ class SalesforceInvoice(BaseModel):
             "example": {
                 "Stripe_Invoice_ID__c": "in_ABC123",
                 "Stripe_Subscription__c": "sub_ABC123",
-                "Stripe_Customer__c": "cus_ABC123",
+                "Stripe_Customer__c": "0031700000IZ3STABC",
                 "Status__c": "paid",
                 "Tax_Amount__c": 2.50,
                 "Discounts_Applied__c": 5.00,
@@ -125,7 +125,7 @@ class SalesforcePaymentTransaction(BaseModel):
         description="External ID - Stripe payment intent ID"
     )
     Stripe_Customer__c: Optional[str] = Field(
-        None, description="Lookup to Stripe_Customer__c"
+        None, description="Lookup to Contact (Contact.Id)"
     )
     Amount__c: Optional[float] = None
     Currency__c: Optional[str] = None
@@ -161,7 +161,7 @@ class SalesforcePaymentTransaction(BaseModel):
         json_schema_extra = {
             "example": {
                 "Stripe_Payment_Intent_ID__c": "pi_ABC123",
-                "Stripe_Customer__c": "cus_ABC123",
+                "Stripe_Customer__c": "0031700000IZ3STABC",
                 "Amount__c": 29.99,
                 "Currency__c": "USD",
                 "Status__c": "succeeded",
@@ -188,13 +188,25 @@ class SalesforceUpsertResponse(BaseModel):
 
 
 class SalesforceContact(BaseModel):
-    """Salesforce Contact record"""
+    """Salesforce Contact record with Stripe customer data"""
 
+    Id: Optional[str] = None
     Stripe_Customer_ID__c: Optional[str] = Field(None, description="External ID - Stripe customer ID")
     Email: Optional[str] = None
     FirstName: Optional[str] = None
     LastName: Optional[str] = None
     Phone: Optional[str] = None
+    Customer_Email__c: Optional[str] = None
+    Customer_Name__c: Optional[str] = None
+    Customer_Phone__c: Optional[str] = None
+    Default_Payment_Method__c: Optional[str] = None
+    Subscription_Status__c: Optional[
+        Literal["None", "Active", "Past Due", "Canceled"]
+    ] = "None"
+    Health_Score__c: Optional[float] = None
+    Churn_Risk__c: Optional[str] = None
+    MRR__c: Optional[float] = None
+    Total_Revenue__c: Optional[float] = None
 
     class Config:
         json_schema_extra = {

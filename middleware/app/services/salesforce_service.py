@@ -291,7 +291,7 @@ class SalesforceService:
         Upsert a record using external ID.
 
         Args:
-            sobject_type: Salesforce object type (e.g., 'Stripe_Customer__c')
+            sobject_type: Salesforce object type (e.g., 'Contact')
             external_id_field: External ID field name
             external_id_value: External ID value
             record_data: Record field values
@@ -327,7 +327,10 @@ class SalesforceService:
 
     async def upsert_customer(self, customer_data: SalesforceCustomer) -> Dict[str, Any]:
         """
-        Upsert Stripe customer record.
+        DEPRECATED: Use upsert_contact() instead.
+        This method is maintained for backward compatibility only.
+
+        Upsert Stripe customer record by converting to Contact.
 
         Args:
             customer_data: Customer data model
@@ -335,16 +338,25 @@ class SalesforceService:
         Returns:
             Upsert response
         """
-        # Exclude the external ID field from the request body
-        record_data = customer_data.model_dump(mode="json", exclude_none=True)
-        record_data.pop("Stripe_Customer_ID__c", None)
-
-        return await self.upsert_record(
-            sobject_type="Stripe_Customer__c",
-            external_id_field="Stripe_Customer_ID__c",
-            external_id_value=customer_data.Stripe_Customer_ID__c,
-            record_data=record_data,
+        import warnings
+        warnings.warn(
+            "upsert_customer is deprecated. Use upsert_contact() instead.",
+            DeprecationWarning,
+            stacklevel=2
         )
+
+        # Convert to Contact and upsert
+        contact_data = SalesforceContact(
+            Stripe_Customer_ID__c=customer_data.Stripe_Customer_ID__c,
+            Email=customer_data.Customer_Email__c,
+            Customer_Email__c=customer_data.Customer_Email__c,
+            Customer_Name__c=customer_data.Customer_Name__c,
+            Customer_Phone__c=customer_data.Customer_Phone__c,
+            Default_Payment_Method__c=customer_data.Default_Payment_Method__c,
+            Subscription_Status__c=customer_data.Subscription_Status__c,
+        )
+
+        return await self.upsert_contact(contact_data)
 
     async def upsert_contact(self, contact_data: SalesforceContact) -> Dict[str, Any]:
         """

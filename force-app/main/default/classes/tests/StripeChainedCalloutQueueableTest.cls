@@ -39,27 +39,23 @@ public class StripeChainedCalloutQueueableTest {
             Test.setMock(HttpCalloutMock.class, new StripeAPIPaymentMethodSuccessMock());
             Contact testContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'Testov'
-            );
-            insert testContact;
-            Stripe_Customer__c customer = new Stripe_Customer__c(
-                Contact__c = testContact.Id,
-                Customer_Email__c = 'test2@example.com',
-                Customer_Phone__c = '+1234567892',
+                LastName = 'Testov',
+                Email = 'test2@example.com',
+                Phone = '+1234567892',
                 Stripe_Customer_ID__c = 'cus_existing123'
             );
-            insert customer;
+            insert testContact;
             StripeChainedCalloutQueueable callout = new StripeChainedCalloutQueueable(
-                'cus_THZzLMvNDK5uWm', customer.Id
+                'cus_THZzLMvNDK5uWm', testContact.Id
             );
             Test.startTest();
             System.enqueueJob(callout);
             Test.stopTest();
-            Stripe_Customer__c result = [SELECT Default_Payment_Method__c
-                                            FROM Stripe_Customer__c
-                                            WHERE Id =: customer.Id];
-            Assert.areEqual('pm_1SL0s9F3hNTtzVuGZuInzLMb', 
-                                result.Default_Payment_Method__c, 
+            Contact result = [SELECT Default_Payment_Method__c
+                                            FROM Contact
+                                            WHERE Id =: testContact.Id];
+            Assert.areEqual('pm_1SL0s9F3hNTtzVuGZuInzLMb',
+                                result.Default_Payment_Method__c,
                                 'Default method is created');
         }
     }
@@ -226,20 +222,15 @@ public class StripeChainedCalloutQueueableTest {
 
             Contact testContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'Failure'
+                LastName = 'Failure',
+                Email = 'testfailure@example.com',
+                Phone = '+1234567890',
+                Stripe_Customer_ID__c = 'cus_fail123'
             );
             insert testContact;
 
-            Stripe_Customer__c customer = new Stripe_Customer__c(
-                Contact__c = testContact.Id,
-                Customer_Email__c = 'testfailure@example.com',
-                Customer_Phone__c = '+1234567890',
-                Stripe_Customer_ID__c = 'cus_fail123'
-            );
-            insert customer;
-
             StripeChainedCalloutQueueable callout = new StripeChainedCalloutQueueable(
-                'cus_fail123', customer.Id
+                'cus_fail123', testContact.Id
             );
 
             Test.startTest();
@@ -251,14 +242,14 @@ public class StripeChainedCalloutQueueableTest {
             }
             Test.stopTest();
 
-            // Verify Stripe_Customer__c was NOT updated (API failed)
-            Stripe_Customer__c updatedCustomer = [
+            // Verify Contact was NOT updated (API failed)
+            Contact updatedContact = [
                 SELECT Default_Payment_Method__c
-                FROM Stripe_Customer__c
-                WHERE Id = :customer.Id
+                FROM Contact
+                WHERE Id = :testContact.Id
             ];
-            Assert.areEqual(null, updatedCustomer.Default_Payment_Method__c,
-                            'Customer should not be updated when API fails');
+            Assert.areEqual(null, updatedContact.Default_Payment_Method__c,
+                            'Contact should not be updated when API fails');
         }
     }
 
@@ -274,37 +265,32 @@ public class StripeChainedCalloutQueueableTest {
 
             Contact testContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'Chain'
+                LastName = 'Chain',
+                Email = 'testchain@example.com',
+                Phone = '+1234567890',
+                Stripe_Customer_ID__c = 'cus_chain123'
             );
             insert testContact;
 
-            Stripe_Customer__c customer = new Stripe_Customer__c(
-                Contact__c = testContact.Id,
-                Customer_Email__c = 'testchain@example.com',
-                Customer_Phone__c = '+1234567890',
-                Stripe_Customer_ID__c = 'cus_chain123'
-            );
-            insert customer;
-
             StripeChainedCalloutQueueable callout = new StripeChainedCalloutQueueable(
-                'cus_chain123', customer.Id
+                'cus_chain123', testContact.Id
             );
 
             Test.startTest();
             System.enqueueJob(callout);
             Test.stopTest();
 
-            // Verify customer was updated with default payment method
-            Stripe_Customer__c updatedCustomer = [
+            // Verify contact was updated with default payment method
+            Contact updatedContact = [
                 SELECT Default_Payment_Method__c
-                FROM Stripe_Customer__c
-                WHERE Id = :customer.Id
+                FROM Contact
+                WHERE Id = :testContact.Id
             ];
-            Assert.areNotEqual(null, updatedCustomer.Default_Payment_Method__c,
-                                'Customer should be updated with default payment method');
+            Assert.areNotEqual(null, updatedContact.Default_Payment_Method__c,
+                                'Contact should be updated with default payment method');
             Assert.areEqual('pm_1SL0s9F3hNTtzVuGZuInzLMb',
-                            updatedCustomer.Default_Payment_Method__c,
-                            'Customer should have correct payment method ID');
+                            updatedContact.Default_Payment_Method__c,
+                            'Contact should have correct payment method ID');
         }
     }
 

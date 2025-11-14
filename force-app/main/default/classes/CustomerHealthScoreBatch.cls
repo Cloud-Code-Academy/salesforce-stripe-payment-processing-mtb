@@ -10,31 +10,50 @@
 public with sharing class CustomerHealthScoreBatch implements Database.Batchable<SObject>, Schedulable {
 
     /**
-     * Start method - query for all customers with invoices
+     * Start method - query for all contacts with Stripe customer data
      */
     public Database.QueryLocator start(Database.BatchableContext bc) {
         return Database.getQueryLocator([
-            SELECT Id, Customer_Name__c, Health_Score__c,
-                   (SELECT Id, Status__c, Dunning_Status__c, Amount__c, CreatedDate
-                    FROM Stripe_Invoices__r
-                    ORDER BY CreatedDate DESC
-                    LIMIT 50)
-            FROM Stripe_Customer__c
-            WHERE Id IN (SELECT Stripe_Customer__c FROM Stripe_Invoice__c)
+            SELECT Id, Customer_Name__c, Health_Score__c, Stripe_Customer_ID__c
+            FROM Contact
+            WHERE Stripe_Customer_ID__c != null
         ]);
     }
 
     /**
      * Execute method - recalculate health scores for each batch
      */
-    public void execute(Database.BatchableContext bc, List<Stripe_Customer__c> scope) {
-        List<Stripe_Customer__c> customersToUpdate = new List<Stripe_Customer__c>();
+    public void execute(Database.BatchableContext bc, List<Contact> scope) {
+        // Get Stripe Customer IDs from contacts in this batch
+        Set<String> stripeCustomerIds = new Set<String>();
+        for (Contact c : scope) {
+            if (String.isNotBlank(c.Stripe_Customer_ID__c)) {
+                stripeCustomerIds.add(c.Stripe_Customer_ID__c);
+            }
+        }
+
+        // Query invoices for these customers
+        Map<String, List<Stripe_Invoice__c>> invoicesByStripeId = new Map<String, List<Stripe_Invoice__c>>();
+        for (Stripe_Invoice__c inv : [
+            SELECT Id, Status__c, Dunning_Status__c, Amount__c, CreatedDate, Stripe_Customer__r.Stripe_Customer_ID__c
+            FROM Stripe_Invoice__c
+            WHERE Stripe_Customer__r.Stripe_Customer_ID__c IN :stripeCustomerIds
+            ORDER BY CreatedDate DESC
+        ]) {
+            String stripeId = inv.Stripe_Customer__r.Stripe_Customer_ID__c;
+            if (!invoicesByStripeId.containsKey(stripeId)) {
+                invoicesByStripeId.put(stripeId, new List<Stripe_Invoice__c>());
+            }
+            invoicesByStripeId.get(stripeId).add(inv);
+        }
+
+        List<Contact> contactsToUpdate = new List<Contact>();
 
         try {
-            for (Stripe_Customer__c customer : scope) {
-                List<Stripe_Invoice__c> invoices = customer.Stripe_Invoices__r;
+            for (Contact contact : scope) {
+                List<Stripe_Invoice__c> invoices = invoicesByStripeId.get(contact.Stripe_Customer_ID__c);
 
-                if (invoices.isEmpty()) {
+                if (invoices == null || invoices.isEmpty()) {
                     continue;
                 }
 
@@ -60,20 +79,20 @@ public with sharing class CustomerHealthScoreBatch implements Database.Batchable
                 Decimal dunningPenalty = Math.min((dunningExhausted / totalInvoices) * 150, 60);
                 Decimal healthScore = Math.max(0, paymentSuccessRate - failurePenalty - dunningPenalty);
 
-                if (Schema.SObjectType.Stripe_Customer__c.isUpdateable() &&
-                    Schema.SObjectType.Stripe_Customer__c.fields.Health_Score__c.isUpdateable()) {
+                if (Schema.SObjectType.Contact.isUpdateable() &&
+                    Schema.SObjectType.Contact.fields.Health_Score__c.isUpdateable()) {
 
-                    Stripe_Customer__c customerToUpdate = new Stripe_Customer__c(
-                        Id = customer.Id,
+                    Contact contactToUpdate = new Contact(
+                        Id = contact.Id,
                         Health_Score__c = healthScore
                     );
-                    customersToUpdate.add(customerToUpdate);
+                    contactsToUpdate.add(contactToUpdate);
                 }
             }
 
-            if (!customersToUpdate.isEmpty()) {
-                update as user customersToUpdate;
-                Logger.info('Updated health scores for ' + customersToUpdate.size() + ' customers');
+            if (!contactsToUpdate.isEmpty()) {
+                update as user contactsToUpdate;
+                Logger.info('Updated health scores for ' + contactsToUpdate.size() + ' contacts');
             }
 
             Logger.saveLog();
