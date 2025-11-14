@@ -74,7 +74,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Assert.areEqual('sub_1SL0dlF3hNTtzVuGK5JQfCji',
                                 result.Stripe_Subscription_ID__c,
                                 'Stripe_Subscription_ID__c was assigned');
-            Assert.areEqual('Synced',
+            Assert.areEqual('Completed',
                                 result.Sync_Status__c,
                                 'Sync_Status__c was updated');
 
@@ -123,7 +123,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Assert.areEqual('sub_1SL0dlF3hNTtzVuGK5JQfCji',
                                 result.Stripe_Subscription_ID__c,
                                 'Stripe_Subscription_ID__c was assigned');
-            Assert.areEqual('Synced',
+            Assert.areEqual('Completed',
                                 result.Sync_Status__c,
                                 'Sync_Status__c was updated');
 
@@ -150,7 +150,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
                 Stripe_Customer__c = customer.Id,
-                Sync_Status__c = 'Synced'
+                Sync_Status__c = 'Completed'
             );
             insert subscriptionRec;
             subscriptionRec = [SELECT Id, Stripe_Price_ID__c, StripeCustomerId__c, Sync_Status__c
@@ -195,7 +195,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
                 Stripe_Customer__c = customer.Id,
-                Sync_Status__c = 'Synced'
+                Sync_Status__c = 'Completed'
             );
             insert subscriptionRec;
             subscriptionRec.PricingPlans__c = 'Basic_Week';
@@ -343,7 +343,7 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void processStripeSubscriptionAfterUpdate_alreadySynced_skipped() {
         System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'Synced');
+            Contact customerContact = new Contact(FirstName = 'Test', LastName = 'Completed');
             insert customerContact;
 
             Stripe_Customer__c customer = new Stripe_Customer__c(
@@ -415,7 +415,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
                 Stripe_Customer__c = customer.Id,
-                Sync_Status__c = 'Synced'
+                Sync_Status__c = 'Completed'
                 // Missing Stripe_Subscription_ID__c
             );
 
@@ -523,7 +523,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Integer initialCount = initialPlans.size();
 
             // Update something other than PricingPlans__c
-            subscriptionRec.Sync_Status__c = 'Synced';
+            subscriptionRec.Sync_Status__c = 'Completed';
 
             Test.startTest();
             update subscriptionRec;

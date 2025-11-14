@@ -47,6 +47,9 @@ class SubscriptionHandler:
         )
 
         subscription_id = session_data.get("subscription")
+        session_id = session_data.get("id")
+        stripe_customer_id = session_data.get("customer")
+
         if not subscription_id:
             logger.warning("No subscription ID in checkout session")
             return {
@@ -54,27 +57,81 @@ class SubscriptionHandler:
                 "reason": "No subscription in checkout session",
             }
 
-        # Update subscription sync status in Salesforce
+        # First, try to find existing Salesforce record by checkout session ID
+        # This prevents creating duplicate records when subscription was initiated from Salesforce
+        salesforce_record_id = None
+        if session_id:
+            try:
+                query = (
+                    f"SELECT Id FROM Stripe_Subscription__c "
+                    f"WHERE Stripe_Checkout_Session_ID__c = '{session_id}' "
+                    f"LIMIT 1"
+                )
+                result = await salesforce_service.query(query)
+                if result.get("records"):
+                    salesforce_record_id = result["records"][0]["Id"]
+                    logger.info(
+                        f"Found existing Salesforce subscription record by session ID: {salesforce_record_id}",
+                        extra={"session_id": session_id}
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to query for existing subscription by session ID: {str(e)}",
+                    extra={"session_id": session_id, "error": str(e)}
+                )
+
+        # Look up Salesforce Customer ID (Stripe_Customer__c is a lookup field, needs SF record ID not Stripe ID)
+        salesforce_customer_id = None
+        if stripe_customer_id:
+            try:
+                query = (
+                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
+                    f"LIMIT 1"
+                )
+                result = await salesforce_service.query(query)
+                if result.get("records"):
+                    salesforce_customer_id = result["records"][0]["Id"]
+                    logger.info(
+                        f"Found Salesforce customer for Stripe customer {stripe_customer_id}: {salesforce_customer_id}",
+                        extra={"stripe_customer_id": stripe_customer_id}
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to query Stripe customer: {str(e)}",
+                    extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
+                )
+
+        # Update subscription with Stripe subscription ID and completed status
         salesforce_subscription = SalesforceSubscription(
             Stripe_Subscription_ID__c=subscription_id,
-            Stripe_Checkout_Session_ID__c=session_data.get("id"),
-            Stripe_Customer__c=session_data.get("customer"),
+            Stripe_Checkout_Session_ID__c=session_id,
+            Stripe_Customer__c=salesforce_customer_id,
             Sync_Status__c="Completed",
         )
 
-        result = await salesforce_service.upsert_subscription(salesforce_subscription)
+        # Use update if we found existing record, otherwise upsert
+        if salesforce_record_id:
+            result = await salesforce_service.update_record(
+                sobject_type="Stripe_Subscription__c",
+                record_id=salesforce_record_id,
+                record_data=salesforce_subscription.model_dump(mode="json", exclude_none=True)
+            )
+        else:
+            result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
         logger.info(
             f"Checkout session completed - subscription updated",
             extra={
                 "subscription_id": subscription_id,
-                "session_id": session_data.get("id"),
+                "session_id": session_id,
+                "salesforce_record_id": salesforce_record_id,
             },
         )
 
         return {
             "subscription_id": subscription_id,
-            "session_id": session_data.get("id"),
+            "session_id": session_id,
             "salesforce_result": result,
             "timestamp": datetime.utcnow().isoformat(),
         }
@@ -262,9 +319,33 @@ class SubscriptionHandler:
         price_data = items[0] if items else {}
         price = price_data.get("price", {})
 
+        # Look up Salesforce customer ID using Stripe customer ID
+        stripe_customer_id = subscription_data.get("customer")
+        salesforce_customer_id = None
+
+        if stripe_customer_id:
+            try:
+                query = (
+                    f"SELECT Id FROM Stripe_Customer__c "
+                    f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
+                    f"LIMIT 1"
+                )
+                result = await salesforce_service.query(query)
+                if result.get("records"):
+                    salesforce_customer_id = result["records"][0]["Id"]
+                    logger.info(
+                        f"Found Salesforce customer for Stripe customer {stripe_customer_id}: {salesforce_customer_id}",
+                        extra={"stripe_customer_id": stripe_customer_id}
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to query Stripe customer: {str(e)}",
+                    extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
+                )
+
         salesforce_subscription = SalesforceSubscription(
             Stripe_Subscription_ID__c=subscription_data["id"],
-            Stripe_Customer__c=subscription_data.get("customer"),
+            Stripe_Customer__c=salesforce_customer_id,
             Status__c=subscription_data.get("status"),
             Current_Period_Start__c=datetime.fromtimestamp(
                 subscription_data["current_period_start"]

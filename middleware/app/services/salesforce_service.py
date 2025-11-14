@@ -575,6 +575,181 @@ class SalesforceService:
             extra={"record_id": record_id},
         )
 
+    async def composite_request(
+        self,
+        composite_requests: List[Dict[str, Any]],
+        all_or_none: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Execute multiple operations in a single Composite API request.
+
+        Composite API allows referencing results from previous operations using @{referenceId.field}.
+        This is useful for creating related records where one depends on the ID of another.
+
+        Args:
+            composite_requests: List of composite request objects with structure:
+                [
+                    {
+                        "method": "POST|PATCH|GET|DELETE",
+                        "url": "/services/data/vXX.X/sobjects/Object__c",
+                        "referenceId": "uniqueId",
+                        "body": {...}  # Optional for GET/DELETE
+                    }
+                ]
+            all_or_none: If True, all operations must succeed or all are rolled back
+
+        Returns:
+            Composite API response with structure:
+                {
+                    "compositeResponse": [
+                        {
+                            "referenceId": "uniqueId",
+                            "httpStatusCode": 201,
+                            "body": {"id": "a00xxx000000001", ...}
+                        }
+                    ]
+                }
+
+        Raises:
+            SalesforceAPIException: If composite request fails
+
+        Example:
+            >>> requests = [
+            ...     {
+            ...         "method": "PATCH",
+            ...         "url": f"/services/data/v{version}/sobjects/Invoice__c/External_Id__c/inv_123",
+            ...         "referenceId": "invoice",
+            ...         "body": {"Amount__c": 100}
+            ...     },
+            ...     {
+            ...         "method": "POST",
+            ...         "url": f"/services/data/v{version}/sobjects/Payment__c",
+            ...         "referenceId": "payment",
+            ...         "body": {
+            ...             "Amount__c": 100,
+            ...             "Invoice__c": "@{invoice.id}"  # References invoice result
+            ...         }
+            ...     }
+            ... ]
+            >>> result = await salesforce_service.composite_request(requests)
+        """
+        endpoint = "composite"
+
+        composite_data = {
+            "allOrNone": all_or_none,
+            "compositeRequest": composite_requests
+        }
+
+        logger.info(
+            f"Executing composite request with {len(composite_requests)} operations",
+            extra={
+                "operation_count": len(composite_requests),
+                "all_or_none": all_or_none,
+                "reference_ids": [req.get("referenceId") for req in composite_requests]
+            }
+        )
+
+        response = await self._request("POST", endpoint, json_data=composite_data)
+
+        # Check for any failures in the composite response
+        if response and "compositeResponse" in response:
+            failed_requests = [
+                r for r in response["compositeResponse"]
+                if r.get("httpStatusCode", 0) >= 400
+            ]
+
+            if failed_requests:
+                logger.error(
+                    f"Composite request had {len(failed_requests)} failed operations",
+                    extra={"failed_requests": failed_requests}
+                )
+
+                if all_or_none:
+                    # With allOrNone=true, Salesforce rolls back everything
+                    raise SalesforceAPIException(
+                        f"Composite request failed: {failed_requests}",
+                        details={"failed_requests": failed_requests}
+                    )
+
+        logger.info(
+            f"Successfully executed composite request",
+            extra={
+                "operation_count": len(composite_requests),
+                "response": response
+            }
+        )
+
+        return response
+
+    async def create_invoice_and_transaction_composite(
+        self,
+        invoice_data: Dict[str, Any],
+        transaction_data: Dict[str, Any],
+        stripe_invoice_id: str
+    ) -> Dict[str, Any]:
+        """
+        Create both Invoice and Payment Transaction in a single Composite API call.
+        The Payment Transaction will be automatically linked to the Invoice using reference IDs.
+
+        Args:
+            invoice_data: Stripe_Invoice__c record data
+            transaction_data: Payment_Transaction__c record data (without Stripe_Invoice__c field)
+            stripe_invoice_id: Stripe invoice ID for upsert external ID
+
+        Returns:
+            Dictionary with both IDs:
+                {
+                    "invoice_id": "a02xxx000000001",
+                    "transaction_id": "a01xxx000000001"
+                }
+
+        Raises:
+            SalesforceAPIException: If composite request fails
+        """
+        # Remove the Stripe_Invoice__c field if present - we'll use reference instead
+        transaction_data_copy = transaction_data.copy()
+        transaction_data_copy.pop("Stripe_Invoice__c", None)
+
+        # Remove the Stripe_Invoice_ID__c field from invoice_data since it's used in the URL
+        invoice_data_copy = invoice_data.copy()
+        invoice_data_copy.pop("Stripe_Invoice_ID__c", None)
+
+        composite_requests = [
+            {
+                "method": "PATCH",
+                "url": f"/services/data/{self.api_version}/sobjects/Stripe_Invoice__c/Stripe_Invoice_ID__c/{stripe_invoice_id}",
+                "referenceId": "invoice",
+                "body": invoice_data_copy
+            },
+            {
+                "method": "POST",
+                "url": f"/services/data/{self.api_version}/sobjects/Payment_Transaction__c",
+                "referenceId": "transaction",
+                "body": {
+                    **transaction_data_copy,
+                    "Stripe_Invoice__c": "@{invoice.id}"  # Reference to invoice result
+                }
+            }
+        ]
+
+        response = await self.composite_request(composite_requests, all_or_none=True)
+
+        # Extract IDs from response
+        invoice_response = next(
+            (r for r in response["compositeResponse"] if r["referenceId"] == "invoice"),
+            None
+        )
+        transaction_response = next(
+            (r for r in response["compositeResponse"] if r["referenceId"] == "transaction"),
+            None
+        )
+
+        return {
+            "invoice_id": invoice_response["body"]["id"] if invoice_response else None,
+            "transaction_id": transaction_response["body"]["id"] if transaction_response else None,
+            "composite_response": response
+        }
+
     async def close(self) -> None:
         """Close HTTP client"""
         await self.http_client.aclose()

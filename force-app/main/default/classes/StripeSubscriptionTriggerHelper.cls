@@ -6,7 +6,7 @@
 public with sharing class StripeSubscriptionTriggerHelper {
     // Status constants for subscription sync
     private static final String STATUS_SEND_TO_STRIPE = 'Send to Stripe';
-    private static final String STATUS_SYNCED = 'Synced';
+    private static final String STATUS_SYNCED = 'Completed';
     private static final String STATUS_FAILED = 'Failed';
     /**
      * @description Processes subscription records marked for sync to Stripe. Identifies subscriptions with 'Send to Stripe'
@@ -34,6 +34,7 @@ public with sharing class StripeSubscriptionTriggerHelper {
 
         for (Stripe_Subscription__c subscription : newList) {
             Stripe_Subscription__c oldSubscription = oldMap.get(subscription.Id);
+            // Changed logic: Instead of creating subscription directly, create checkout session which will create the subscription
             if (oldSubscription != null
                 && oldSubscription.Sync_Status__c != subscription.Sync_Status__c
                 && subscription.Sync_Status__c == STATUS_SEND_TO_STRIPE
@@ -48,17 +49,17 @@ public with sharing class StripeSubscriptionTriggerHelper {
         if (!subscriptionsForProcess.isEmpty()) {
             for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
                 try {
+                    // Create checkout session directly - this will create the subscription in Stripe
                     StripeCalloutQueueable callout = new StripeCalloutQueueable(
                         subscriptionRec.StripeCustomerId__c,
-                        subscriptionRec.Id,
                         subscriptionRec.Stripe_Price_ID__c,
-                        subscriptionRec.CustomerDefaultPayment__c
+                        subscriptionRec.Id
                     );
                     if (!Test.isRunningTest()) {
                         System.enqueueJob(callout);
                     }
                 } catch (Exception ex) {
-                    Logger.error('Failed to enqueue subscription callout for subscription: ' + subscriptionRec.Id, ex);
+                    Logger.error('Failed to enqueue checkout session callout for subscription: ' + subscriptionRec.Id, ex);
                     Logger.saveLog();
                     // Track failed subscriptions for status update
                     subscriptionRec.Sync_Status__c = STATUS_FAILED;
@@ -79,7 +80,7 @@ public with sharing class StripeSubscriptionTriggerHelper {
     }
     /**
      * @description Processes successfully synced subscriptions to create Stripe Checkout Sessions. Identifies subscriptions
-     *              with 'Synced' status that have all required data and initiates asynchronous callouts to create a checkout
+     *              with 'Completed' status that have all required data and initiates asynchronous callouts to create a checkout
      *              session for payment collection. Enforces object-level read permissions.
      * @param newList List of updated Stripe_Subscription__c records
      * @param oldMap Map of Stripe_Subscription__c records before the update (Id to old record)

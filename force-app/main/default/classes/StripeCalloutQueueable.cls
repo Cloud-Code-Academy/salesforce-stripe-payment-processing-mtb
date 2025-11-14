@@ -189,7 +189,7 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         Stripe_Subscription__c subscription = new Stripe_Subscription__c(
             Id = recordId,
             Stripe_Subscription_ID__c = subscriptionId, 
-            Sync_Status__c = 'Synced'
+            Sync_Status__c = 'Completed'
         );
         if (Schema.SObjectType.Stripe_Subscription__c.isUpdateable()){
             if (Schema.SObjectType.Stripe_Subscription__c.fields.Stripe_Subscription_ID__c.isUpdateable()
