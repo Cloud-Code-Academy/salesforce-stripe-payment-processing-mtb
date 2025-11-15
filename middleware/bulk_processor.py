@@ -620,7 +620,7 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
         if records_failed > 0:
             customer_failed = True
             logger.error(
-                f"[BULK_API_CUSTOMER_FAILED] Stripe_Customer__c job had failures",
+                f"[BULK_API_CUSTOMER_FAILED] Contact (Stripe customer data) job had failures",
                 extra={
                     "job_id": job_id,
                     "failed_count": records_failed,
@@ -630,7 +630,7 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
 
     except Exception as e:
         logger.error(
-            f"[BULK_API_ERROR] Stripe_Customer__c processing failed: {str(e)}",
+            f"[BULK_API_ERROR] Contact (Stripe customer data) processing failed: {str(e)}",
             exc_info=True,
             extra={
                 "record_count": len(customer_records),
