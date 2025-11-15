@@ -5,7 +5,7 @@
     <description>Prevent users from editing Stripe-synced fields after subscription is created in Stripe</description>
     <errorConditionFormula>AND(
     NOT(ISBLANK(Stripe_Subscription_ID__c)),
-    NOT($Setup.Bypass_Automation__c.Skip_Validation_Rules__c),
+    NOT($CustomMetadata.Bypass_Automation__mdt.Block_Subscription_Manual_Edit.Skip_Validation_Rules__c),
     OR(
         ISCHANGED(Status__c),
         ISCHANGED(Amount__c),
