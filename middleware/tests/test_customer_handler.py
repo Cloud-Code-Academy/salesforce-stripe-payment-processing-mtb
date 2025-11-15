@@ -2,7 +2,7 @@
 Tests for Customer Handler
 
 Tests the customer.updated webhook event handler that syncs
-Stripe customer data to both Stripe_Customer__c and Contact records.
+Stripe customer data to Contact records.
 """
 
 import pytest
@@ -11,14 +11,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.handlers.customer_handler import customer_handler
 from app.models.stripe_events import StripeEvent
-from app.models.salesforce_records import SalesforceCustomer, SalesforceContact
+from app.models.salesforce_records import SalesforceContact
 
 
 @pytest.fixture
 def mock_salesforce_service():
     """Mock Salesforce service"""
     with patch('app.handlers.customer_handler.salesforce_service') as mock:
-        mock.upsert_customer = AsyncMock(return_value={"id": "a01xx000000001", "success": True})
         mock.upsert_contact = AsyncMock(return_value={"id": "003xx000000001", "success": True})
         yield mock
 
@@ -117,16 +116,6 @@ async def test_handle_customer_updated_success(mock_salesforce_service, customer
     # Call handler
     result = await customer_handler.handle_customer_updated(customer_updated_event)
 
-    # Verify Stripe_Customer__c upsert was called
-    mock_salesforce_service.upsert_customer.assert_called_once()
-    customer_call = mock_salesforce_service.upsert_customer.call_args[0][0]
-    assert isinstance(customer_call, SalesforceCustomer)
-    assert customer_call.Stripe_Customer_ID__c == "cus_test123"
-    assert customer_call.Customer_Email__c == "john.doe@example.com"
-    assert customer_call.Customer_Name__c == "John Doe"
-    assert customer_call.Customer_Phone__c == "+1234567890"
-    assert customer_call.Default_Payment_Method__c == "pm_test456"
-
     # Verify Contact upsert was called
     mock_salesforce_service.upsert_contact.assert_called_once()
     contact_call = mock_salesforce_service.upsert_contact.call_args[0][0]
@@ -139,7 +128,6 @@ async def test_handle_customer_updated_success(mock_salesforce_service, customer
 
     # Verify result
     assert result["customer_id"] == "cus_test123"
-    assert result["stripe_customer_result"]["success"] is True
     assert result["contact_result"]["success"] is True
     assert "timestamp" in result
 
@@ -233,8 +221,7 @@ async def test_handle_customer_updated_salesforce_error():
     """Test error handling when Salesforce upsert fails"""
 
     with patch('app.handlers.customer_handler.salesforce_service') as mock_service:
-        # Make upsert_customer succeed but upsert_contact fail
-        mock_service.upsert_customer = AsyncMock(return_value={"success": True})
+        # Make upsert_contact fail
         mock_service.upsert_contact = AsyncMock(side_effect=Exception("Salesforce API error"))
 
         event = StripeEvent(
@@ -261,30 +248,17 @@ async def test_handle_customer_updated_salesforce_error():
 
 
 @pytest.mark.asyncio
-async def test_handle_customer_updated_both_calls_made(mock_salesforce_service, customer_updated_event):
-    """Test that both Stripe_Customer__c and Contact are updated in sequence"""
-
-    # Track call order
-    call_order = []
-
-    async def track_customer_call(*args, **kwargs):
-        call_order.append("customer")
-        return {"id": "a01xx000000001", "success": True}
-
-    async def track_contact_call(*args, **kwargs):
-        call_order.append("contact")
-        return {"id": "003xx000000001", "success": True}
-
-    mock_salesforce_service.upsert_customer = AsyncMock(side_effect=track_customer_call)
-    mock_salesforce_service.upsert_contact = AsyncMock(side_effect=track_contact_call)
+async def test_handle_customer_updated_contact_upsert(mock_salesforce_service, customer_updated_event):
+    """Test that Contact is updated with Stripe customer data"""
 
     # Call handler
     result = await customer_handler.handle_customer_updated(customer_updated_event)
 
-    # Verify both calls were made in correct order
-    assert call_order == ["customer", "contact"]
-    assert mock_salesforce_service.upsert_customer.call_count == 1
+    # Verify Contact upsert was called
     assert mock_salesforce_service.upsert_contact.call_count == 1
+    contact_call = mock_salesforce_service.upsert_contact.call_args[0][0]
+    assert isinstance(contact_call, SalesforceContact)
+    assert contact_call.Stripe_Customer_ID__c == "cus_test123"
 
 
 @pytest.mark.asyncio
@@ -307,14 +281,7 @@ async def test_handle_customer_updated_minimal_data(mock_salesforce_service):
     # Call handler
     result = await customer_handler.handle_customer_updated(event)
 
-    # Verify both upserts were called with minimal data
-    mock_salesforce_service.upsert_customer.assert_called_once()
-    customer_call = mock_salesforce_service.upsert_customer.call_args[0][0]
-    assert customer_call.Stripe_Customer_ID__c == "cus_minimal"
-    assert customer_call.Customer_Email__c is None
-    assert customer_call.Customer_Name__c is None
-    assert customer_call.Customer_Phone__c is None
-
+    # Verify Contact upsert was called with minimal data
     mock_salesforce_service.upsert_contact.assert_called_once()
     contact_call = mock_salesforce_service.upsert_contact.call_args[0][0]
     assert contact_call.Stripe_Customer_ID__c == "cus_minimal"

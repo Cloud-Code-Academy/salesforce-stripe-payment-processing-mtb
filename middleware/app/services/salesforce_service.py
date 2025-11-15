@@ -325,39 +325,6 @@ class SalesforceService:
 
         return response
 
-    async def upsert_customer(self, customer_data: SalesforceCustomer) -> Dict[str, Any]:
-        """
-        DEPRECATED: Use upsert_contact() instead.
-        This method is maintained for backward compatibility only.
-
-        Upsert Stripe customer record by converting to Contact.
-
-        Args:
-            customer_data: Customer data model
-
-        Returns:
-            Upsert response
-        """
-        import warnings
-        warnings.warn(
-            "upsert_customer is deprecated. Use upsert_contact() instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-
-        # Convert to Contact and upsert
-        contact_data = SalesforceContact(
-            Stripe_Customer_ID__c=customer_data.Stripe_Customer_ID__c,
-            Email=customer_data.Customer_Email__c,
-            Customer_Email__c=customer_data.Customer_Email__c,
-            Customer_Name__c=customer_data.Customer_Name__c,
-            Customer_Phone__c=customer_data.Customer_Phone__c,
-            Default_Payment_Method__c=customer_data.Default_Payment_Method__c,
-            Subscription_Status__c=customer_data.Subscription_Status__c,
-        )
-
-        return await self.upsert_contact(contact_data)
-
     async def upsert_contact(self, contact_data: SalesforceContact) -> Dict[str, Any]:
         """
         Upsert Contact record using Stripe Customer ID as external ID.

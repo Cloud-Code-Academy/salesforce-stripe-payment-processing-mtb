@@ -1095,7 +1095,7 @@ class PaymentHandler:
 
     async def _get_stripe_customer_id(self, stripe_customer_id: str) -> Optional[str]:
         """
-        Query Salesforce for Stripe_Customer__c record by Stripe Customer ID.
+        Query Salesforce for Contact record via Stripe_Customer__c lookup field by Stripe Customer ID.
 
         Args:
             stripe_customer_id: Stripe customer ID (e.g., 'cus_xxx')
