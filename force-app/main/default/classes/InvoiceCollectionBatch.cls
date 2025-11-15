@@ -36,6 +36,7 @@ public with sharing class InvoiceCollectionBatch implements Database.Batchable<S
             FROM Stripe_Invoice__c
             WHERE Due_Date__c < :overdueDate
                 AND Status__c IN ('open', 'uncollectible')
+                AND Stripe_Subscription__r.Stripe_Customer__c != null
             ORDER BY Due_Date__c ASC
         ]);
     }
@@ -45,22 +46,22 @@ public with sharing class InvoiceCollectionBatch implements Database.Batchable<S
      */
     public void execute(Database.BatchableContext bc, List<Stripe_Invoice__c> scope) {
         try {
-            // Group invoices by customer for analysis (accessed via subscription relationship)
-            Map<Id, List<Stripe_Invoice__c>> invoicesByCustomer = new Map<Id, List<Stripe_Invoice__c>>();
+            // Group invoices by contact customer for analysis (accessed via subscription relationship)
+            Map<Id, List<Stripe_Invoice__c>> invoicesByContact = new Map<Id, List<Stripe_Invoice__c>>();
 
             for (Stripe_Invoice__c invoice : scope) {
                 if (invoice.Stripe_Subscription__r?.Stripe_Customer__c != null) {
-                    Id customerId = invoice.Stripe_Subscription__r.Stripe_Customer__c;
-                    if (!invoicesByCustomer.containsKey(customerId)) {
-                        invoicesByCustomer.put(customerId, new List<Stripe_Invoice__c>());
+                    Id contactId = invoice.Stripe_Subscription__r.Stripe_Customer__c;
+                    if (!invoicesByContact.containsKey(contactId)) {
+                        invoicesByContact.put(contactId, new List<Stripe_Invoice__c>());
                     }
-                    invoicesByCustomer.get(customerId).add(invoice);
+                    invoicesByContact.get(contactId).add(invoice);
                 }
             }
 
             // Log collection issues
-            for (Id customerId : invoicesByCustomer.keySet()) {
-                List<Stripe_Invoice__c> customerInvoices = invoicesByCustomer.get(customerId);
+            for (Id contactId : invoicesByContact.keySet()) {
+                List<Stripe_Invoice__c> customerInvoices = invoicesByContact.get(contactId);
                 Decimal totalOverdue = 0;
                 Integer invoiceCount = customerInvoices.size();
 
@@ -71,7 +72,7 @@ public with sharing class InvoiceCollectionBatch implements Database.Batchable<S
                 }
 
                 Logger.info(
-                    'Customer ' + customerId + ' has ' + invoiceCount +
+                    'Contact ' + contactId + ' has ' + invoiceCount +
                     ' overdue invoice(s) totaling ' + totalOverdue
                 );
             }

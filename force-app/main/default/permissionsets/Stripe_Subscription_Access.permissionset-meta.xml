@@ -93,11 +93,6 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Stripe_Subscription__c.Stripe_Customer__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
         <field>Stripe_Subscription__c.Stripe_Price_ID__c</field>
         <readable>true</readable>
     </fieldPermissions>

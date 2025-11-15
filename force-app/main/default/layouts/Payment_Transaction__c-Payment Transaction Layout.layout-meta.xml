@@ -44,10 +44,6 @@
             </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>
-                <field>Stripe_Customer__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Edit</behavior>
                 <field>Stripe_Subscription__c</field>
             </layoutItems>
         </layoutColumns>
