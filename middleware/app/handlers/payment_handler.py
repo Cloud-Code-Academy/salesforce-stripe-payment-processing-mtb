@@ -75,7 +75,6 @@ class PaymentHandler:
         # Map payment intent to Salesforce transaction
         salesforce_transaction = SalesforcePaymentTransaction(
             Stripe_Payment_Intent_ID__c=payment_intent["id"],
-            Stripe_Customer__c=salesforce_customer_id,
             Amount__c=payment_intent.get("amount", 0) / 100,  # Convert cents to dollars
             Currency__c=payment_intent.get("currency", "").upper(),
             Status__c="succeeded",
@@ -153,35 +152,9 @@ class PaymentHandler:
             },
         )
 
-        # Look up Salesforce customer ID using Stripe customer ID
-        stripe_customer_id = payment_intent.get("customer")
-        salesforce_customer_id = None
-
-        if stripe_customer_id:
-            try:
-                query = (
-                    f"SELECT Id FROM Contact "
-                    f"WHERE Stripe_Customer_ID__c = '{stripe_customer_id}' "
-                    f"LIMIT 1"
-                )
-                result = await salesforce_service.query(query)
-                if result.get("records"):
-                    salesforce_customer_id = result["records"][0]["Id"]
-                else:
-                    logger.warning(
-                        f"Stripe customer not found in Salesforce: {stripe_customer_id}",
-                        extra={"stripe_customer_id": stripe_customer_id}
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Failed to query Stripe customer: {str(e)}",
-                    extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
-                )
-
         # Map payment intent to Salesforce transaction
         salesforce_transaction = SalesforcePaymentTransaction(
             Stripe_Payment_Intent_ID__c=payment_intent["id"],
-            Stripe_Customer__c=salesforce_customer_id,
             Amount__c=payment_intent.get("amount", 0) / 100,  # Convert cents to dollars
             Currency__c=payment_intent.get("currency", "").upper(),
             Status__c="failed",
@@ -581,7 +554,6 @@ class PaymentHandler:
         self,
         invoice_data: Dict[str, Any],
         subscription_sf_id: Optional[str],
-        stripe_customer_sf_id: Optional[str],
         invoice_sf_id: Optional[str] = None
     ) -> str:
         """Create payment transaction record in Salesforce."""
@@ -596,12 +568,9 @@ class PaymentHandler:
             "Transaction_Type__c": "recurring_payment"
         }
 
-        # Link to subscription and customer if found
+        # Link to subscription if found
         if subscription_sf_id:
             transaction_data["Stripe_Subscription__c"] = subscription_sf_id
-
-        if stripe_customer_sf_id:
-            transaction_data["Stripe_Customer__c"] = stripe_customer_sf_id
 
         # Link to invoice if available
         if invoice_sf_id:
@@ -711,11 +680,9 @@ class PaymentHandler:
             "Transaction_Type__c": "recurring_payment"
         }
 
-        # Link to subscription and customer if found
+        # Link to subscription if found
         if subscription_sf_id:
             transaction_record_data["Stripe_Subscription__c"] = subscription_sf_id
-        if stripe_customer_sf_id:
-            transaction_record_data["Stripe_Customer__c"] = stripe_customer_sf_id
 
         # Remove None values
         transaction_record_data = {k: v for k, v in transaction_record_data.items() if v is not None}
@@ -812,11 +779,9 @@ class PaymentHandler:
             "Failure_Reason__c": invoice_data["failure_message"]
         }
 
-        # Link to subscription and customer if found
+        # Link to subscription if found
         if subscription_sf_id:
             transaction_record_data["Stripe_Subscription__c"] = subscription_sf_id
-        if stripe_customer_sf_id:
-            transaction_record_data["Stripe_Customer__c"] = stripe_customer_sf_id
 
         # Remove None values
         transaction_record_data = {k: v for k, v in transaction_record_data.items() if v is not None}
@@ -1068,12 +1033,9 @@ class PaymentHandler:
             "Failure_Reason__c": invoice_data["failure_message"]
         }
 
-        # Link to subscription and customer if found
+        # Link to subscription if found
         if subscription_sf_id:
             transaction_data["Stripe_Subscription__c"] = subscription_sf_id
-
-        if stripe_customer_sf_id:
-            transaction_data["Stripe_Customer__c"] = stripe_customer_sf_id
 
         # Link to invoice if available
         if invoice_sf_id:

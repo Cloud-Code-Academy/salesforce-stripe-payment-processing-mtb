@@ -52,10 +52,6 @@
         <layoutColumns>
             <layoutItems>
                 <behavior>Edit</behavior>
-                <field>Stripe_Customer__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Edit</behavior>
                 <field>Stripe_Price_ID__c</field>
             </layoutItems>
             <layoutItems>

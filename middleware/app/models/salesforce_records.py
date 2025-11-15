@@ -124,9 +124,6 @@ class SalesforcePaymentTransaction(BaseModel):
     Stripe_Payment_Intent_ID__c: str = Field(
         description="External ID - Stripe payment intent ID"
     )
-    Stripe_Customer__c: Optional[str] = Field(
-        None, description="Lookup to Contact (Contact.Id)"
-    )
     Amount__c: Optional[float] = None
     Currency__c: Optional[str] = None
     Status__c: Optional[
@@ -161,7 +158,6 @@ class SalesforcePaymentTransaction(BaseModel):
         json_schema_extra = {
             "example": {
                 "Stripe_Payment_Intent_ID__c": "pi_ABC123",
-                "Stripe_Customer__c": "0031700000IZ3STABC",
                 "Amount__c": 29.99,
                 "Currency__c": "USD",
                 "Status__c": "succeeded",
