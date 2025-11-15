@@ -93,6 +93,11 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
+        <field>Stripe_Subscription__c.Stripe_Customer__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
         <field>Stripe_Subscription__c.Stripe_Price_ID__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -108,16 +113,6 @@
     </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Stripe Subscription Access</label>
-    <objectPermissions>
-        <allowCreate>true</allowCreate>
-        <allowDelete>true</allowDelete>
-        <allowEdit>true</allowEdit>
-        <allowRead>true</allowRead>
-        <modifyAllRecords>false</modifyAllRecords>
-        <object>Stripe_Subscription__c</object>
-        <viewAllFields>false</viewAllFields>
-        <viewAllRecords>false</viewAllRecords>
-    </objectPermissions>
     <tabSettings>
         <tab>Stripe_Subscription__c</tab>
         <visibility>Visible</visibility>

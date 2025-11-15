@@ -35,12 +35,12 @@ public with sharing class CustomerHealthScoreBatch implements Database.Batchable
         // Query invoices for these customers
         Map<String, List<Stripe_Invoice__c>> invoicesByStripeId = new Map<String, List<Stripe_Invoice__c>>();
         for (Stripe_Invoice__c inv : [
-            SELECT Id, Status__c, Dunning_Status__c, Amount__c, CreatedDate, Stripe_Customer__r.Stripe_Customer_ID__c
+            SELECT Id, Status__c, Dunning_Status__c, Amount__c, CreatedDate, Contact__r.Stripe_Customer_ID__c
             FROM Stripe_Invoice__c
-            WHERE Stripe_Customer__r.Stripe_Customer_ID__c IN :stripeCustomerIds
+            WHERE Contact__r.Stripe_Customer_ID__c IN :stripeCustomerIds
             ORDER BY CreatedDate DESC
         ]) {
-            String stripeId = inv.Stripe_Customer__r.Stripe_Customer_ID__c;
+            String stripeId = inv.Contact__r.Stripe_Customer_ID__c;
             if (!invoicesByStripeId.containsKey(stripeId)) {
                 invoicesByStripeId.put(stripeId, new List<Stripe_Invoice__c>());
             }

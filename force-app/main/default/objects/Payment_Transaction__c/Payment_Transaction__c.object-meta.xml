@@ -152,16 +152,16 @@
     <enableSearch>true</enableSearch>
     <enableSharing>true</enableSharing>
     <enableStreamingApi>true</enableStreamingApi>
-    <externalSharingModel>Private</externalSharingModel>
-    <label>Payment Transaction</label>
+    <externalSharingModel>ControlledByParent</externalSharingModel>
+    <label>Stripe Payment Transaction</label>
     <nameField>
         <displayFormat>PMT-{000000}</displayFormat>
         <label>Payment Transaction Number</label>
         <trackHistory>false</trackHistory>
         <type>AutoNumber</type>
     </nameField>
-    <pluralLabel>Payment Transactions</pluralLabel>
+    <pluralLabel>Stripe Payment Transactions</pluralLabel>
     <searchLayouts></searchLayouts>
-    <sharingModel>ReadWrite</sharingModel>
+    <sharingModel>ControlledByParent</sharingModel>
     <visibility>Public</visibility>
 </CustomObject>

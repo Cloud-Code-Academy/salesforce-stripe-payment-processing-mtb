@@ -4,7 +4,6 @@
     <deleteConstraint>SetNull</deleteConstraint>
     <label>Stripe Subscription</label>
     <referenceTo>Stripe_Subscription__c</referenceTo>
-    <relationshipLabel>Payment Transactions</relationshipLabel>
     <relationshipName>Payment_Transactions</relationshipName>
     <required>false</required>
     <trackHistory>true</trackHistory>

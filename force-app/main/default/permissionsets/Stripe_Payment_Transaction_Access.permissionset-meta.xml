@@ -23,11 +23,6 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Stripe_Invoice__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
         <field>Payment_Transaction__c.Stripe_Payment_Intent_ID__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -43,16 +38,6 @@
     </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Stripe Payment Transaction Access</label>
-    <objectPermissions>
-        <allowCreate>true</allowCreate>
-        <allowDelete>true</allowDelete>
-        <allowEdit>true</allowEdit>
-        <allowRead>true</allowRead>
-        <modifyAllRecords>false</modifyAllRecords>
-        <object>Payment_Transaction__c</object>
-        <viewAllFields>false</viewAllFields>
-        <viewAllRecords>false</viewAllRecords>
-    </objectPermissions>
     <tabSettings>
         <tab>Payment_Transaction__c</tab>
         <visibility>Visible</visibility>

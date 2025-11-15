@@ -98,7 +98,7 @@ public class TestDataFactory {
         List<Stripe_Subscription__c> subscriptions = new List<Stripe_Subscription__c>();
         for (Integer i = 0; i < numberOfSubscriptions; i++) {
             subscriptions.add(new Stripe_Subscription__c(
-                Stripe_Customer__c = contactId,
+                Contact__c = contactId,
                 Stripe_Subscription_ID__c = 'sub_test' + i,
                 Status__c = 'active',
                 Product_Plan_Name__c = 'Test Plan ' + i
@@ -117,13 +117,13 @@ public class TestDataFactory {
      */
     public static List<Stripe_Invoice__c> createStripeInvoices(Integer numberOfInvoices, Id subscriptionId, String status) {
         // Get the subscription to find the contact
-        Stripe_Subscription__c sub = [SELECT Stripe_Customer__c FROM Stripe_Subscription__c WHERE Id = :subscriptionId LIMIT 1];
+        Stripe_Subscription__c sub = [SELECT Contact__c FROM Stripe_Subscription__c WHERE Id = :subscriptionId LIMIT 1];
 
         List<Stripe_Invoice__c> invoices = new List<Stripe_Invoice__c>();
         for (Integer i = 0; i < numberOfInvoices; i++) {
             invoices.add(new Stripe_Invoice__c(
                 Stripe_Subscription__c = subscriptionId,
-                Stripe_Customer__c = sub.Stripe_Customer__c,
+                Contact__c = sub.Contact__c,
                 Stripe_Invoice_ID__c = 'inv_test' + i + '_' + System.now().getTime(),
                 Amount__c = 29.99,
                 Status__c = status,
