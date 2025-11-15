@@ -51,7 +51,7 @@ public class StripeSubscriptionTriggerHelperTest {
             insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
             );
             insert subscriptionRec;
@@ -98,7 +98,7 @@ public class StripeSubscriptionTriggerHelperTest {
             insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customerContact.Id
+                Contact__c = customerContact.Id
             );
             insert subscriptionRec;
             subscriptionRec = [SELECT Id, Stripe_Price_ID__c, StripeCustomerId__c, CustomerDefaultPayment__c, Sync_Status__c
@@ -146,7 +146,7 @@ public class StripeSubscriptionTriggerHelperTest {
             insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 Sync_Status__c = 'Completed'
             );
             insert subscriptionRec;
@@ -190,7 +190,7 @@ public class StripeSubscriptionTriggerHelperTest {
             insert customerContact;
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 Sync_Status__c = 'Completed'
             );
             insert subscriptionRec;
@@ -255,7 +255,7 @@ public class StripeSubscriptionTriggerHelperTest {
 
             // Create subscription without Stripe_Price_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
                 // Missing Stripe_Price_ID__c
             );
@@ -282,7 +282,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
                 Sync_Status__c = 'Send to Stripe'
-                // Missing Stripe_Customer__c
+                // Missing Contact__c
             );
 
             Test.startTest();
@@ -319,7 +319,7 @@ public class StripeSubscriptionTriggerHelperTest {
 
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
             );
 
@@ -357,7 +357,7 @@ public class StripeSubscriptionTriggerHelperTest {
             // Create subscription with existing Stripe_Subscription_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 Stripe_Subscription_ID__c = 'sub_existing123',
                 Sync_Status__c = 'Send to Stripe'
             );
@@ -414,7 +414,7 @@ public class StripeSubscriptionTriggerHelperTest {
             // Create subscription without Stripe_Subscription_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 Sync_Status__c = 'Completed'
                 // Missing Stripe_Subscription_ID__c
             );
@@ -470,7 +470,7 @@ public class StripeSubscriptionTriggerHelperTest {
 
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customerContact.Id
+                Contact__c = customerContact.Id
             );
             insert subscriptionRec;
 
@@ -514,7 +514,7 @@ public class StripeSubscriptionTriggerHelperTest {
 
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Stripe_Customer__c = customerContact.Id,
+                Contact__c = customerContact.Id,
                 PricingPlans__c = 'Basic_Week'
             );
             insert subscriptionRec;
@@ -569,7 +569,7 @@ public class StripeSubscriptionTriggerHelperTest {
             for (Integer i = 0; i < 3; i++) {
                 subscriptions.add(new Stripe_Subscription__c(
                     Stripe_Price_ID__c = 'price_bulk' + i,
-                    Stripe_Customer__c = customers[i].Id,
+                    Contact__c = customers[i].Id,
                     Sync_Status__c = 'Send to Stripe'
                 ));
             }
