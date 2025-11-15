@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Provides access to Stripe Invoice object and all its fields.</description>
     <fieldPermissions>
         <editable>true</editable>
         <field>Stripe_Invoice__c.Discounts_Applied__c</field>
