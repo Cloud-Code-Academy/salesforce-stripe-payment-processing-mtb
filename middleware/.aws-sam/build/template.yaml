@@ -1,0 +1,948 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: "Salesforce-Stripe Payment Processing Middleware\nFastAPI-based webhook\
+  \ handler with SQS processing for Stripe \u2192 Salesforce integration\n"
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.11
+    Architectures:
+    - x86_64
+    Environment:
+      Variables:
+        ENVIRONMENT:
+          Ref: Environment
+        LOG_LEVEL:
+          Ref: LogLevel
+        APP_NAME: Salesforce-Stripe Middleware
+        SQS_QUEUE_URL:
+          Ref: StripeEventQueue
+        LOW_PRIORITY_QUEUE_URL:
+          Ref: LowPriorityEventQueue
+        DYNAMODB_TABLE_NAME:
+          Ref: CacheTable
+        BATCH_ACCUMULATOR_TABLE_NAME:
+          Ref: BatchAccumulatorTable
+        STRIPE_WEBHOOK_SECRET_ARN:
+          Ref: StripeWebhookSecret
+        SALESFORCE_CLIENT_SECRET_ARN:
+          Ref: SalesforceClientSecret
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues:
+    - development
+    - staging
+    - production
+    Description: Deployment environment
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues:
+    - DEBUG
+    - INFO
+    - WARNING
+    - ERROR
+    Description: Logging level
+  StripeApiKey:
+    Type: String
+    NoEcho: true
+    Description: Stripe API Key (will be stored in Secrets Manager)
+  StripeWebhookSecretValue:
+    Type: String
+    NoEcho: true
+    Description: Stripe Webhook Signing Secret
+  SalesforceClientId:
+    Type: String
+    Description: Salesforce Connected App Client ID
+  SalesforceClientSecretValue:
+    Type: String
+    NoEcho: true
+    Description: Salesforce Connected App Client Secret
+  SalesforceInstanceUrl:
+    Type: String
+    Default: https://login.salesforce.com
+    Description: Salesforce instance URL
+Resources:
+  StripeApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-stripe-api-key
+      Description: Stripe API Key for webhook processing
+      SecretString:
+        Ref: StripeApiKey
+  StripeWebhookSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-stripe-webhook-secret
+      Description: Stripe Webhook Signing Secret
+      SecretString:
+        Ref: StripeWebhookSecretValue
+  SalesforceClientSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-salesforce-client-secret
+      Description: Salesforce Connected App Client Secret
+      SecretString:
+        Fn::Sub: "{\n  \"client_id\": \"${SalesforceClientId}\",\n  \"client_secret\"\
+          : \"${SalesforceClientSecretValue}\",\n  \"instance_url\": \"${SalesforceInstanceUrl}\"\
+          \n}\n"
+  StripeEventDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${AWS::StackName}-stripe-events-dlq
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 300
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+  StripeEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${AWS::StackName}-stripe-events
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 345600
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+          - StripeEventDLQ
+          - Arn
+        maxReceiveCount: 5
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+  LowPriorityEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${AWS::StackName}-low-priority-events
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 345600
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+          - StripeEventDLQ
+          - Arn
+        maxReceiveCount: 3
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Purpose
+        Value: Low-priority events for Bulk API processing
+  CacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::Sub: ${AWS::StackName}-cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: pk
+        AttributeType: S
+      - AttributeName: sk
+        AttributeType: S
+      KeySchema:
+      - AttributeName: pk
+        KeyType: HASH
+      - AttributeName: sk
+        KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Purpose
+        Value: Token caching and temporary storage
+  RateLimitPerSecondTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-second
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: resource_id
+        AttributeType: S
+      - AttributeName: timestamp
+        AttributeType: N
+      KeySchema:
+      - AttributeName: resource_id
+        KeyType: HASH
+      - AttributeName: timestamp
+        KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+      - Key: Purpose
+        Value: RateLimiting
+      - Key: Tier
+        Value: PerSecond
+  RateLimitPerMinuteTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-minute
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: resource_id
+        AttributeType: S
+      - AttributeName: timestamp
+        AttributeType: N
+      KeySchema:
+      - AttributeName: resource_id
+        KeyType: HASH
+      - AttributeName: timestamp
+        KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+      - Key: Purpose
+        Value: RateLimiting
+      - Key: Tier
+        Value: PerMinute
+  RateLimitPerDayTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: salesforce-rate-limit-per-day
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: resource_id
+        AttributeType: S
+      - AttributeName: timestamp
+        AttributeType: N
+      KeySchema:
+      - AttributeName: resource_id
+        KeyType: HASH
+      - AttributeName: timestamp
+        KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+      - Key: Purpose
+        Value: RateLimiting
+      - Key: Tier
+        Value: PerDay
+  BatchAccumulatorTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::Sub: ${AWS::StackName}-batch-accumulator
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: pk
+        AttributeType: S
+      - AttributeName: sk
+        AttributeType: S
+      KeySchema:
+      - AttributeName: pk
+        KeyType: HASH
+      - AttributeName: sk
+        KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Purpose
+        Value: BatchAccumulation
+  StripeEventIdempotencyTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: stripe-event-idempotency
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: event_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: event_id
+        KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Purpose
+        Value: EventIdempotency
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-webhook-receiver
+      CodeUri: WebhookFunction
+      Handler: lambda_handler.lambda_handler
+      Description: Receives and verifies Stripe webhooks, pushes to SQS
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          STRIPE_API_KEY_ARN:
+            Ref: StripeApiKeySecret
+          STRIPE_WEBHOOK_SECRET_ARN:
+            Ref: StripeWebhookSecret
+          SALESFORCE_CLIENT_SECRET_ARN:
+            Ref: SalesforceClientSecret
+          SALESFORCE_INSTANCE_URL:
+            Ref: SalesforceInstanceUrl
+      Policies:
+      - SQSSendMessagePolicy:
+          QueueName:
+            Fn::GetAtt:
+            - StripeEventQueue
+            - QueueName
+      - SQSSendMessagePolicy:
+          QueueName:
+            Fn::GetAtt:
+            - LowPriorityEventQueue
+            - QueueName
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: CacheTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: BatchAccumulatorTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerSecondTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerMinuteTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerDayTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: StripeEventIdempotencyTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - secretsmanager:GetSecretValue
+          Resource:
+          - Ref: StripeApiKeySecret
+          - Ref: StripeWebhookSecret
+          - Ref: SalesforceClientSecret
+      - Statement:
+        - Effect: Allow
+          Action:
+          - sqs:GetQueueAttributes
+          - sqs:GetQueueUrl
+          Resource:
+          - Fn::GetAtt:
+            - StripeEventQueue
+            - Arn
+          - Fn::GetAtt:
+            - LowPriorityEventQueue
+            - Arn
+      Events:
+        CatchAll:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            ApiId:
+              Ref: WebhookHttpApi
+        Root:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+            ApiId:
+              Ref: WebhookHttpApi
+      Tags:
+        Environment:
+          Ref: Environment
+    Metadata:
+      SamResourceId: WebhookFunction
+  WebhookFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/lambda/${WebhookFunction}
+      RetentionInDays: 7
+  SqsWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-sqs-worker
+      CodeUri: SqsWorkerFunction
+      Handler: sqs_worker.lambda_handler
+      Description: Processes Stripe events from SQS and updates Salesforce
+      Timeout: 90
+      MemorySize: 1024
+      Environment:
+        Variables:
+          STRIPE_API_KEY_ARN:
+            Ref: StripeApiKeySecret
+          STRIPE_WEBHOOK_SECRET_ARN:
+            Ref: StripeWebhookSecret
+          SALESFORCE_CLIENT_SECRET_ARN:
+            Ref: SalesforceClientSecret
+          SALESFORCE_INSTANCE_URL:
+            Ref: SalesforceInstanceUrl
+      Policies:
+      - SQSPollerPolicy:
+          QueueName:
+            Fn::GetAtt:
+            - StripeEventQueue
+            - QueueName
+      - SQSSendMessagePolicy:
+          QueueName:
+            Fn::GetAtt:
+            - LowPriorityEventQueue
+            - QueueName
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: CacheTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: BatchAccumulatorTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerSecondTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerMinuteTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerDayTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: StripeEventIdempotencyTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - secretsmanager:GetSecretValue
+          Resource:
+          - Ref: StripeApiKeySecret
+          - Ref: StripeWebhookSecret
+          - Ref: SalesforceClientSecret
+      - Statement:
+        - Effect: Allow
+          Action:
+          - sqs:GetQueueAttributes
+          - sqs:GetQueueUrl
+          Resource:
+          - Fn::GetAtt:
+            - StripeEventQueue
+            - Arn
+          - Fn::GetAtt:
+            - LowPriorityEventQueue
+            - Arn
+      Events:
+        SqsEvent:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - StripeEventQueue
+              - Arn
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 10
+            FunctionResponseTypes:
+            - ReportBatchItemFailures
+      Tags:
+        Environment:
+          Ref: Environment
+    Metadata:
+      SamResourceId: SqsWorkerFunction
+  SqsWorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/lambda/${SqsWorkerFunction}
+      RetentionInDays: 7
+  BulkProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-bulk-processor
+      CodeUri: BulkProcessorFunction
+      Handler: bulk_processor.lambda_handler
+      Description: Processes low-priority events in batches using Salesforce Bulk
+        API 2.0
+      Timeout: 300
+      MemorySize: 1024
+      Environment:
+        Variables:
+          STRIPE_API_KEY_ARN:
+            Ref: StripeApiKeySecret
+          STRIPE_WEBHOOK_SECRET_ARN:
+            Ref: StripeWebhookSecret
+          SALESFORCE_CLIENT_SECRET_ARN:
+            Ref: SalesforceClientSecret
+          SALESFORCE_INSTANCE_URL:
+            Ref: SalesforceInstanceUrl
+      Policies:
+      - SQSPollerPolicy:
+          QueueName:
+            Fn::GetAtt:
+            - LowPriorityEventQueue
+            - QueueName
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: CacheTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: BatchAccumulatorTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerSecondTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerMinuteTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: RateLimitPerDayTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: StripeEventIdempotencyTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - secretsmanager:GetSecretValue
+          Resource:
+          - Ref: StripeApiKeySecret
+          - Ref: StripeWebhookSecret
+          - Ref: SalesforceClientSecret
+      - Statement:
+        - Effect: Allow
+          Action:
+          - sqs:GetQueueAttributes
+          - sqs:GetQueueUrl
+          Resource:
+          - Fn::GetAtt:
+            - StripeEventQueue
+            - Arn
+          - Fn::GetAtt:
+            - LowPriorityEventQueue
+            - Arn
+      Events:
+        LowPrioritySqsEvent:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - LowPriorityEventQueue
+              - Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 30
+            FunctionResponseTypes:
+            - ReportBatchItemFailures
+        ScheduledBatchProcessing:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Description: Periodically process accumulated batches even when SQS queue
+              is empty
+            Enabled: true
+      Tags:
+        Environment:
+          Ref: Environment
+        Purpose: Bulk API Processing
+    Metadata:
+      SamResourceId: BulkProcessorFunction
+  BulkProcessorFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/lambda/${BulkProcessorFunction}
+      RetentionInDays: 7
+  WebhookHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      Description:
+        Fn::Sub: API Gateway for Stripe webhooks - ${Environment}
+      CorsConfiguration:
+        AllowOrigins:
+        - '*'
+        AllowMethods:
+        - POST
+        AllowHeaders:
+        - Content-Type
+        - Stripe-Signature
+      Tags:
+        Environment:
+          Ref: Environment
+  WebhookErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-webhook-errors
+      AlarmDescription: Alert when webhook function has high error rate
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: FunctionName
+        Value:
+          Ref: WebhookFunction
+      TreatMissingData: notBreaching
+  DlqMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-dlq-messages
+      AlarmDescription: Alert when messages appear in DLQ
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+      - Name: QueueName
+        Value:
+          Fn::GetAtt:
+          - StripeEventDLQ
+          - QueueName
+      TreatMissingData: notBreaching
+  QueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-queue-depth
+      AlarmDescription: Alert when queue has too many pending messages
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: QueueName
+        Value:
+          Fn::GetAtt:
+          - StripeEventQueue
+          - QueueName
+      TreatMissingData: notBreaching
+  SqsWorkerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-sqs-worker-errors
+      AlarmDescription: Alert when SQS worker function has high error rate
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: FunctionName
+        Value:
+          Ref: SqsWorkerFunction
+      TreatMissingData: notBreaching
+  BulkProcessorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-bulk-processor-errors
+      AlarmDescription: Alert when bulk processor function has high error rate
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: FunctionName
+        Value:
+          Ref: BulkProcessorFunction
+      TreatMissingData: notBreaching
+  LowPriorityQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-low-priority-queue-depth
+      AlarmDescription: Alert when low-priority queue has too many pending messages
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 500
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: QueueName
+        Value:
+          Fn::GetAtt:
+          - LowPriorityEventQueue
+          - QueueName
+      TreatMissingData: notBreaching
+  WebhookDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-webhook-duration
+      AlarmDescription: Alert when webhook function is approaching timeout
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 8000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: FunctionName
+        Value:
+          Ref: WebhookFunction
+      TreatMissingData: notBreaching
+  SqsWorkerDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-sqs-worker-duration
+      AlarmDescription: Alert when SQS worker is approaching timeout
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 75000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: FunctionName
+        Value:
+          Ref: SqsWorkerFunction
+      TreatMissingData: notBreaching
+  BulkProcessorDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-bulk-processor-duration
+      AlarmDescription: Alert when bulk processor is approaching timeout
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 240000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: FunctionName
+        Value:
+          Ref: BulkProcessorFunction
+      TreatMissingData: notBreaching
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-lambda-throttles
+      AlarmDescription: Alert when any Lambda function is being throttled
+      Metrics:
+      - Id: webhook_throttles
+        MetricStat:
+          Metric:
+            Namespace: AWS/Lambda
+            MetricName: Throttles
+            Dimensions:
+            - Name: FunctionName
+              Value:
+                Ref: WebhookFunction
+          Period: 300
+          Stat: Sum
+        ReturnData: false
+      - Id: worker_throttles
+        MetricStat:
+          Metric:
+            Namespace: AWS/Lambda
+            MetricName: Throttles
+            Dimensions:
+            - Name: FunctionName
+              Value:
+                Ref: SqsWorkerFunction
+          Period: 300
+          Stat: Sum
+        ReturnData: false
+      - Id: bulk_throttles
+        MetricStat:
+          Metric:
+            Namespace: AWS/Lambda
+            MetricName: Throttles
+            Dimensions:
+            - Name: FunctionName
+              Value:
+                Ref: BulkProcessorFunction
+          Period: 300
+          Stat: Sum
+        ReturnData: false
+      - Id: total_throttles
+        Expression: webhook_throttles + worker_throttles + bulk_throttles
+        ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  ApiGateway5XXAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-api-gateway-5xx
+      AlarmDescription: Alert when API Gateway has high 5XX error rate
+      MetricName: 5XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: ApiId
+        Value:
+          Ref: WebhookHttpApi
+      TreatMissingData: notBreaching
+  ApiGateway4XXAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-api-gateway-4xx
+      AlarmDescription: Alert when API Gateway has unusually high 4XX error rate
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: ApiId
+        Value:
+          Ref: WebhookHttpApi
+      TreatMissingData: notBreaching
+  OldMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-old-messages
+      AlarmDescription: Alert when messages are stuck in queue too long
+      MetricName: ApproximateAgeOfOldestMessage
+      Namespace: AWS/SQS
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 300
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: QueueName
+        Value:
+          Fn::GetAtt:
+          - StripeEventQueue
+          - QueueName
+      TreatMissingData: notBreaching
+  LowPriorityOldMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName:
+        Fn::Sub: ${AWS::StackName}-low-priority-old-messages
+      AlarmDescription: Alert when low-priority messages are aging beyond batch window
+      MetricName: ApproximateAgeOfOldestMessage
+      Namespace: AWS/SQS
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 60
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: QueueName
+        Value:
+          Fn::GetAtt:
+          - LowPriorityEventQueue
+          - QueueName
+      TreatMissingData: notBreaching
+Outputs:
+  WebhookUrl:
+    Description: Stripe Webhook URL (configure this in Stripe Dashboard)
+    Value:
+      Fn::Sub: https://${WebhookHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook/stripe
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-WebhookUrl
+  WebhookFunctionArn:
+    Description: Webhook Lambda Function ARN
+    Value:
+      Fn::GetAtt:
+      - WebhookFunction
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-WebhookFunctionArn
+  SqsWorkerFunctionArn:
+    Description: SQS Worker Lambda Function ARN
+    Value:
+      Fn::GetAtt:
+      - SqsWorkerFunction
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-SqsWorkerFunctionArn
+  QueueUrl:
+    Description: SQS Queue URL
+    Value:
+      Ref: StripeEventQueue
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-QueueUrl
+  DlqUrl:
+    Description: Dead Letter Queue URL
+    Value:
+      Ref: StripeEventDLQ
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-DlqUrl
+  ApiId:
+    Description: API Gateway ID
+    Value:
+      Ref: WebhookHttpApi
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-ApiId
+  LowPriorityQueueUrl:
+    Description: Low-Priority SQS Queue URL (for Bulk API processing)
+    Value:
+      Ref: LowPriorityEventQueue
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-LowPriorityQueueUrl
+  BulkProcessorFunctionArn:
+    Description: Bulk Processor Lambda Function ARN
+    Value:
+      Fn::GetAtt:
+      - BulkProcessorFunction
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-BulkProcessorFunctionArn
+  BatchAccumulatorTableName:
+    Description: Batch Accumulator DynamoDB Table Name
+    Value:
+      Ref: BatchAccumulatorTable
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-BatchAccumulatorTableName
