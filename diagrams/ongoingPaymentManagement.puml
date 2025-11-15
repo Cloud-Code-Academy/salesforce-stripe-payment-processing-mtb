@@ -1,0 +1,86 @@
+@startuml OngoingPaymentManagement
+title Ongoing Payment Management
+
+participant "Stripe" as S
+participant "Webhook Endpoint" as WH
+participant "Stripe Subscription" as SS
+participant "Subscription" as SU
+participant "Stripe Payment" as SP
+participant "Payment" as P
+participant "Integration Log" as IL
+
+autonumber
+
+note over S: Automatic renewal date arrives
+S -> S : Create Invoice
+activate S
+note right: Event: invoice.created
+
+S -> S : Attempt Payment
+note right: Stripe charges\nstored payment method
+
+alt Payment Succeeds
+    S -> S : Mark Invoice as Paid
+    note right: Event: invoice.payment_succeeded
+    
+    S -> WH : POST webhook\n(invoice.payment_succeeded)
+    activate WH
+    
+    WH -> WH : Verify webhook signature
+    WH -> IL : Log webhook received
+    activate IL
+    deactivate IL
+    
+    WH -> SU : Find Subscription\n(by Stripe Subscription ID)
+    activate SU
+    
+    WH -> SU : Update Period Dates
+    note right: Update Current Period Start/End\nfrom invoice data
+    
+    WH -> P : Create Payment Transaction
+    activate P
+    P -> P : Store Payment Intent ID\nAmount, Status = Succeeded
+    P -> SU : Link to Subscription
+    deactivate P
+    
+    SU -> SU : Status = Active
+    deactivate SU
+    
+    WH -> IL : Log success
+    activate IL
+    deactivate IL
+    
+    WH --> S : 200 OK
+    deactivate WH
+    
+else Payment Fails
+    S -> S : Mark Invoice as Open
+    note right: Event: invoice.payment_failed
+    
+    S -> WH : POST webhook\n(invoice.payment_failed)
+    activate WH
+    
+    WH -> WH : Verify signature
+    WH -> IL : Log webhook
+    activate IL
+    deactivate IL
+    
+    WH -> SU : Update Subscription
+    activate SU
+    SU -X SU : Status = Past Due
+    SU -> SU : Store error details
+    deactivate SU
+    
+    WH -> IL : Log failure
+    activate IL
+    deactivate IL
+    
+    WH --> S : 200 OK
+    deactivate WH
+    
+    note over S: Stripe will retry\nper retry schedule
+end
+
+deactivate S
+
+@enduml

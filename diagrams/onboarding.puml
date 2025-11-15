@@ -1,0 +1,96 @@
+@startuml Onboarding Sequence Diagram
+title Onboarding Sequence
+
+actor "Client" as C
+actor "Executive" as E
+participant "Contact" as Co
+participant "Stripe Connector" as SC
+participant "Stripe Customer" as SCu
+participant "Subscription" as Su
+participant "Stripe Subscription" as SS
+participant "Stripe Checkout Session" as CS
+participant "Payment" as P
+participant "Stripe Payment" as SP
+
+autonumber
+
+C -> E : Buy Subscription
+
+group Customer Creation
+    E -> Co : Create
+    activate Co
+    Co -> SC : Created Customer
+    activate SC
+    SC -> SCu : Create Customer
+    activate SCu
+    SC <-- SCu : Stripe Customer ID
+    deactivate SCu
+    SC --> Co : Stripe Customer ID
+    deactivate SC
+    Co --> E : OK
+    deactivate Co
+end
+
+group Subscription Creation
+    E -> Su : Create Subscription
+    activate Su
+    Su -> SC : Create Subscription
+    activate SC
+    
+    SC -> SS : Create Checkout Session
+    activate SS
+    note right of SS
+        mode: 'subscription'
+        line_items: [pricing plan]
+        customer: stripe_customer_id
+    end note
+    
+    SS -> CS : Create Session
+    activate CS
+    CS --> SS : Checkout Session ID\n& Checkout URL
+    deactivate CS
+    
+    SS -> Su : Store Checkout Session ID\n& URL
+    Su -> Su : Set Sync Status = "Checkout Created"
+    deactivate SS
+    deactivate SC
+    
+    Su --> E : Checkout URL
+    E --> C : Send Checkout URL
+    deactivate Su
+end
+
+group Payment Completion (Webhook)
+    C -> CS : Complete Payment
+    activate CS
+    CS -> SP : Create Payment Intent\n(Stripe auto-creates)
+    activate SP
+    
+    note right of CS
+        Stripe automatically creates
+        PaymentIntent when customer
+        completes Checkout Session
+    end note
+    
+    CS --> C : Payment Success
+    deactivate CS
+    
+    SP -> SC : webhook: checkout.session.completed
+    activate SC
+    SC -> Su : Update Subscription
+    activate Su
+    Su -> Su : Status = Active\nSync Status = Completed
+    
+    SC -> P : Create Payment Record
+    activate P
+    P --> P : Store Payment Intent ID
+    deactivate P
+    
+    Su --> SC : OK
+    deactivate Su
+    SC --> SP : 200 OK
+    deactivate SC
+    deactivate SP
+end
+
+@enduml

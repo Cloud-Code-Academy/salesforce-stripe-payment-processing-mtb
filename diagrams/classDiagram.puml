@@ -1,0 +1,76 @@
+@startuml Class Diagram
+
+title Class Diagram - Stripe Integration
+
+package Stripe{
+    class Customer
+    class Subscription
+    class PaymentTransaction
+}
+
+package Salesforce {
+    class Contact {
+        - StripeCustomerID: String (External ID)
+    }
+    class StripeCustomer {
+        - StripeCustomerID: String (External ID)
+        - Email: String
+        - Name: String
+        - Phone: String
+        - DefaultPaymentMethod: String
+        - SubscriptionStatus: String
+    }
+    class StripeSubscription {
+        - StripeSubscriptionID: String (External ID)
+        - Status: Picklist
+        - CurrentPeriodStart: Date
+        - CurrentPeriodEnd: Date
+        - Amount: Currency
+        - Currency: String
+        - CheckoutSessionID: String
+        - CheckoutURL: String
+        - SyncStatus: Picklist
+        - ErrorMessage: LongText
+    }
+    class StripePaymentTransaction {
+        - StripePaymentIntentID: String (External ID)
+        - Amount: Currency
+        - Currency: String
+        - Status: Picklist
+        - PaymentMethodType: String
+        - TransactionDate: DateTime
+    }
+    class PricingPlan {
+        - StripePriceID: String (External ID)
+        - Amount: Currency
+        - Currency: String
+        - RecurrencyType: Picklist
+    }
+    enum RecurrencyType {
+        - Daily
+        - Weekly
+        - Monthly
+        - Quartely
+        - Yearly
+    }
+    class PricingTier {
+        - TierNumber: Integer
+        - FromQuantity: Integer
+        - ToQuantity: Integer
+        - UnitPrice: Currency
+        - Discount: Percentage
+    }
+}
+
+Customer "1" -- "0..1" StripeCustomer : syncs to
+Subscription "1" -- "0..1" StripeSubscription : syncs to
+PaymentTransaction "1" -- "0..1" StripePaymentTransaction : syncs to
+
+Contact "1" --o "0..1" StripeCustomer : linked to
+StripeCustomer "1" --> "0..*" StripeSubscription : has
+StripeSubscription "1" --> "1" PricingPlan : contains
+StripeSubscription "1" <-- "0..*" StripePaymentTransaction : generates
+PricingPlan "1" --> "1" RecurrencyType : defines
+PricingPlan "1" --o "0..*" PricingTier : has
+
+@enduml
