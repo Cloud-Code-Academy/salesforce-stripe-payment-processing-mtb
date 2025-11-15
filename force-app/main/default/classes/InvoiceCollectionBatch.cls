@@ -32,11 +32,11 @@ public with sharing class InvoiceCollectionBatch implements Database.Batchable<S
         return Database.getQueryLocator([
             SELECT Id, Name, Stripe_Invoice_ID__c, Amount__c, Status__c,
                    Dunning_Status__c, Due_Date__c, Stripe_Subscription__c,
-                   Stripe_Subscription__r.Stripe_Customer__c
+                   Stripe_Subscription__r.Contact__c
             FROM Stripe_Invoice__c
             WHERE Due_Date__c < :overdueDate
                 AND Status__c IN ('open', 'uncollectible')
-                AND Stripe_Subscription__r.Stripe_Customer__c != null
+                AND Stripe_Subscription__r.Contact__c != null
             ORDER BY Due_Date__c ASC
         ]);
     }
@@ -50,8 +50,8 @@ public with sharing class InvoiceCollectionBatch implements Database.Batchable<S
             Map<Id, List<Stripe_Invoice__c>> invoicesByContact = new Map<Id, List<Stripe_Invoice__c>>();
 
             for (Stripe_Invoice__c invoice : scope) {
-                if (invoice.Stripe_Subscription__r?.Stripe_Customer__c != null) {
-                    Id contactId = invoice.Stripe_Subscription__r.Stripe_Customer__c;
+                if (invoice.Stripe_Subscription__r?.Contact__c != null) {
+                    Id contactId = invoice.Stripe_Subscription__r.Contact__c;
                     if (!invoicesByContact.containsKey(contactId)) {
                         invoicesByContact.put(contactId, new List<Stripe_Invoice__c>());
                     }
