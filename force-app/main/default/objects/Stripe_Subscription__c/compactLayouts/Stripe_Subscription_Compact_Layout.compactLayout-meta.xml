@@ -4,7 +4,6 @@
     <fields>Name</fields>
     <fields>Product_Plan_Name__c</fields>
     <fields>Status__c</fields>
-    <fields>Stripe_Customer__c</fields>
     <fields>Currency__c</fields>
     <fields>Amount__c</fields>
     <fields>Current_Period_Start__c</fields>
