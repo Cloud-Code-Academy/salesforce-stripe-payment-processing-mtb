@@ -42,9 +42,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'Testov',
                 Email = 'test4@example.com',
                 Phone = '+1234567894',
-                Customer_Email__c = 'test4@example.com',
-                Customer_Phone__c = '+1234567894',
-                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
@@ -89,9 +86,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'Testov',
                 Email = 'test4@example.com',
                 Phone = '+1234567894',
-                Customer_Email__c = 'test4@example.com',
-                Customer_Phone__c = '+1234567894',
-                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
@@ -137,9 +131,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'Testov',
                 Email = 'test4@example.com',
                 Phone = '+1234567894',
-                Customer_Email__c = 'test4@example.com',
-                Customer_Phone__c = '+1234567894',
-                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
@@ -181,9 +172,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'Testov',
                 Email = 'test4@example.com',
                 Phone = '+1234567894',
-                Customer_Email__c = 'test4@example.com',
-                Customer_Phone__c = '+1234567894',
-                Customer_Name__c = 'Test Testov',
                 Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
                 Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
             );
@@ -245,9 +233,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'Missing',
                 Email = 'missing@example.com',
                 Phone = '+1234567890',
-                Customer_Email__c = 'missing@example.com',
-                Customer_Phone__c = '+1234567890',
-                Customer_Name__c = 'Test Missing',
                 Stripe_Customer_ID__c = 'cus_test123',
                 Default_Payment_Method__c = 'pm_test123'
             );
@@ -309,9 +294,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'NoPayment',
                 Email = 'nopayment@example.com',
                 Phone = '+1234567890',
-                Customer_Email__c = 'nopayment@example.com',
-                Customer_Phone__c = '+1234567890',
-                Customer_Name__c = 'Test NoPayment',
                 Stripe_Customer_ID__c = 'cus_nopayment'
                 // Missing Default_Payment_Method__c
             );
@@ -346,9 +328,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'Completed',
                 Email = 'synced@example.com',
                 Phone = '+1234567890',
-                Customer_Email__c = 'synced@example.com',
-                Customer_Phone__c = '+1234567890',
-                Customer_Name__c = 'Test Completed',
                 Stripe_Customer_ID__c = 'cus_synced',
                 Default_Payment_Method__c = 'pm_synced'
             );
@@ -404,9 +383,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'NoSubId',
                 Email = 'nosubid@example.com',
                 Phone = '+1234567890',
-                Customer_Email__c = 'nosubid@example.com',
-                Customer_Phone__c = '+1234567890',
-                Customer_Name__c = 'Test NoSubId',
                 Stripe_Customer_ID__c = 'cus_nosubid'
             );
             insert customerContact;
@@ -461,9 +437,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'NoMetadata',
                 Email = 'nometadata@example.com',
                 Phone = '+1234567890',
-                Customer_Email__c = 'nometadata@example.com',
-                Customer_Phone__c = '+1234567890',
-                Customer_Name__c = 'Test NoMetadata',
                 Stripe_Customer_ID__c = 'cus_nometadata'
             );
             insert customerContact;
@@ -505,9 +478,6 @@ public class StripeSubscriptionTriggerHelperTest {
                 LastName = 'Unchanged',
                 Email = 'unchanged@example.com',
                 Phone = '+1234567890',
-                Customer_Email__c = 'unchanged@example.com',
-                Customer_Phone__c = '+1234567890',
-                Customer_Name__c = 'Test Unchanged',
                 Stripe_Customer_ID__c = 'cus_unchanged'
             );
             insert customerContact;
@@ -555,9 +525,6 @@ public class StripeSubscriptionTriggerHelperTest {
                     LastName = 'Test ' + i,
                     Email = 'bulk' + i + '@example.com',
                     Phone = '+123456789' + i,
-                    Customer_Email__c = 'bulk' + i + '@example.com',
-                    Customer_Phone__c = '+123456789' + i,
-                    Customer_Name__c = 'Bulk Test ' + i,
                     Stripe_Customer_ID__c = 'cus_bulk' + i,
                     Default_Payment_Method__c = 'pm_bulk' + i
                 ));

@@ -26,9 +26,9 @@ public with sharing class ContactTriggerHelper {
                 try {
                     StripeCalloutQueueable callout = new StripeCalloutQueueable(
                         filteredCustomer.Id,
-                        filteredCustomer.Customer_Name__c,
-                        filteredCustomer.Customer_Email__c,
-                        filteredCustomer.Customer_Phone__c
+                        filteredCustomer.FirstName + ' ' + filteredCustomer.LastName,
+                        filteredCustomer.Email,
+                        filteredCustomer.Phone
                     );
                     if (!Test.isRunningTest()) {
                         System.enqueueJob(callout);
@@ -153,13 +153,10 @@ public with sharing class ContactTriggerHelper {
                     // Call Stripe API to update customer
                     String updatedCustomerId = StripeAPIService.updateCustomer(customerWrapper, cont.Stripe_Customer_ID__c);
 
-                    // Update Contact record with Stripe Customer ID and customer data
+                    // Update Contact record with Stripe Customer ID
                     Contact contactToUpdate = new Contact(
                         Id = cont.Id,
-                        Stripe_Customer_ID__c = updatedCustomerId,
-                        Customer_Email__c = cont.Email,
-                        Customer_Name__c = customerName,
-                        Customer_Phone__c = cont.Phone
+                        Stripe_Customer_ID__c = updatedCustomerId
                     );
                     contactsToUpdateSalesforce.add(contactToUpdate);
 

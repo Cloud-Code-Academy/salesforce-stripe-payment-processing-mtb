@@ -14,9 +14,6 @@ class SalesforceCustomer(BaseModel):
     """Deprecated: Use SalesforceContact instead. Maintained for backward compatibility."""
 
     Stripe_Customer_ID__c: str = Field(description="External ID - Stripe customer ID")
-    Customer_Email__c: Optional[str] = None
-    Customer_Name__c: Optional[str] = None
-    Customer_Phone__c: Optional[str] = None
     Default_Payment_Method__c: Optional[str] = None
     Subscription_Status__c: Optional[
         Literal["None", "Active", "Past Due", "Canceled"]
@@ -27,8 +24,6 @@ class SalesforceCustomer(BaseModel):
         json_schema_extra = {
             "example": {
                 "Stripe_Customer_ID__c": "cus_ABC123",
-                "Customer_Email__c": "customer@example.com",
-                "Customer_Name__c": "John Doe",
                 "Subscription_Status__c": "Active",
             }
         }
@@ -192,9 +187,6 @@ class SalesforceContact(BaseModel):
     FirstName: Optional[str] = None
     LastName: Optional[str] = None
     Phone: Optional[str] = None
-    Customer_Email__c: Optional[str] = None
-    Customer_Name__c: Optional[str] = None
-    Customer_Phone__c: Optional[str] = None
     Default_Payment_Method__c: Optional[str] = None
     Subscription_Status__c: Optional[
         Literal["None", "Active", "Past Due", "Canceled"]

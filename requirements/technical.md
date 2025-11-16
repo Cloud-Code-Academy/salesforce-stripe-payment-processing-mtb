@@ -262,19 +262,14 @@ This project emphasizes real-world integration patterns including:
 
 **Custom Objects Implemented:**
 
-#### Stripe Customer (`Stripe_Customer__c`)
-- **Name:** Auto-Number (SC-{000000}) - Stripe Customer Number
+#### Contact (Standard Object with Stripe Customer Fields)
 - **Stripe Customer ID** (`Stripe_Customer_ID__c`) - Text (External ID, Unique) - Maps to Stripe customer ID
-- **Customer Email** (`Customer_Email__c`) - Email
-- **Customer Name** (`Customer_Name__c`) - Text
-- **Customer Phone** (`Customer_Phone__c`) - Phone
 - **Default Payment Method** (`Default_Payment_Method__c`) - Text
 - **Subscription Status** (`Subscription_Status__c`) - Picklist (None, Active, Past Due, Canceled)
-- **Contact** (`Contact__c`) - Lookup to Contact object
-- **Object Settings:**
-  - Track field history enabled
-  - Reports and dashboards enabled
-  - Sharing: ReadWrite
+- **Standard Fields Used:**
+  - Email - Customer email address
+  - FirstName/LastName - Customer name
+  - Phone - Customer phone number
 
 #### Stripe Subscription (`Stripe_Subscription__c`)
 - **Name:** Auto-Number (SUB-{000000}) - Subscription Number

@@ -14,7 +14,7 @@ public with sharing class CustomerHealthScoreBatch implements Database.Batchable
      */
     public Database.QueryLocator start(Database.BatchableContext bc) {
         return Database.getQueryLocator([
-            SELECT Id, Customer_Name__c, Health_Score__c, Stripe_Customer_ID__c
+            SELECT Id, Health_Score__c, Stripe_Customer_ID__c
             FROM Contact
             WHERE Stripe_Customer_ID__c != null
         ]);

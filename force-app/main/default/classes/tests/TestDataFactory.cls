@@ -77,9 +77,6 @@ public class TestDataFactory {
                 LastName = 'Customer ' + i,
                 Email = 'customer' + i + '@example.com',
                 Phone = '+987654321' + i,
-                Customer_Email__c = 'customer' + i + '@example.com',
-                Customer_Name__c = 'Stripe Customer ' + i,
-                Customer_Phone__c = '+987654321' + i,
                 Stripe_Customer_ID__c = 'cus_test' + i,
                 Subscription_Status__c = 'None'
             ));
