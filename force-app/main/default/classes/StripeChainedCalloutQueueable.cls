@@ -11,6 +11,7 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
     private Id recordId;
     private String requestBody;
     private String customerId;
+    private Integer retryCount;
     /**
      * @description Constructor for price creation callouts. Initializes the queueable job to create a Stripe price
      *              using a pre-formatted request body (typically after product creation).
@@ -20,12 +21,27 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
     public StripeChainedCalloutQueueable(
         Id recordId,
         String requestBody
+    ){
+        this(recordId, requestBody, 0);
+    }
 
+    /**
+     * @description Constructor for price creation callouts with retry count. Used for retry logic with exponential backoff.
+     * @param recordId Salesforce record ID of the Pricing_Plan__c record to update after price creation
+     * @param requestBody URL-encoded request body containing price configuration parameters
+     * @param retryCount Current retry attempt number (0 for initial attempt)
+     */
+    public StripeChainedCalloutQueueable(
+        Id recordId,
+        String requestBody,
+        Integer retryCount
     ){
         this.calloutType = CREATE_PRICING_PLAN;
         this.recordId = recordId;
         this.requestBody = requestBody;
+        this.retryCount = retryCount;
     }
+
     /**
      * @description Constructor for payment method creation callouts. Initializes the queueable job to create and attach
      *              a default payment method to a Stripe customer.
@@ -36,14 +52,29 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
         String customerId,
         Id recordId
     ){
+        this(customerId, recordId, 0);
+    }
+
+    /**
+     * @description Constructor for payment method creation callouts with retry count. Used for retry logic with exponential backoff.
+     * @param customerId Stripe customer ID to associate with the payment method
+     * @param recordId Salesforce record ID of the Contact record to update with payment method details
+     * @param retryCount Current retry attempt number (0 for initial attempt)
+     */
+    public StripeChainedCalloutQueueable(
+        String customerId,
+        Id recordId,
+        Integer retryCount
+    ){
         this.calloutType = CREATE_DEFAULT_METHOD;
         this.customerId = customerId;
         this.recordId = recordId;
+        this.retryCount = retryCount;
     }
     /**
      * @description Executes the chained queueable job based on callout type. Routes to either price creation (updating
      *              Pricing Plan) or payment method creation (updating Customer and chaining to payment method attachment).
-     *              Includes comprehensive error logging for all operations.
+     *              Implements retry logic with exponential backoff for transient errors.
      * @param context QueueableContext provided by the platform
      */
     public void execute(QueueableContext context){
@@ -51,6 +82,8 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
             try {
                 String stripePriceId = StripeAPIService.createPrice(requestBody);
                 updatePricingPlan(recordId, stripePriceId);
+            } catch (StripeException ex) {
+                handleRetryableException(ex, 'Failed to create price');
             } catch (Exception ex) {
                 Logger.error('Failed to get stripePriceId/update Stripe Pricing Plan record: ', ex);
                 Logger.saveLog();
@@ -62,11 +95,64 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
                     updateCustomer(recordId, defaultMethodId);
                     System.enqueueJob(new StripeFinalCalloutQueueable(customerId, defaultMethodId));
                 }
+            } catch (StripeException ex) {
+                handleRetryableException(ex, 'Failed to create default payment method');
             } catch (Exception ex) {
                  Logger.error('Failed to get defaultMethodId/update Stripe Customer record: ', ex);
                 Logger.saveLog();
             }
         }
+    }
+
+    /**
+     * @description Handles retryable exceptions by re-enqueueing the job with exponential backoff delay.
+     * @param ex The StripeException that was thrown
+     * @param errorContext Context string describing the operation that failed
+     */
+    private void handleRetryableException(StripeException ex, String errorContext) {
+        if (ex.isRetryable() && retryCount < StripeAPIService.MAX_RETRY_COUNT) {
+            // Calculate exponential backoff delay in minutes
+            Integer delayMinutes = (Integer)(Math.pow(2, retryCount) * StripeAPIService.BASE_DELAY_MINUTES);
+
+            Logger.warn(errorContext + '. Retryable error encountered. Retry attempt ' + (retryCount + 1) +
+                       ' of ' + StripeAPIService.MAX_RETRY_COUNT + '. Retrying in ' + delayMinutes + ' minutes')
+                .setMessage(ex.getDetailedMessage())
+                .addTag('Stripe-Retry');
+            Logger.saveLog();
+
+            // Re-enqueue the job with delay
+            StripeChainedCalloutQueueable retryJob = createRetryJob();
+            System.enqueueJob(retryJob, delayMinutes);
+        } else {
+            // Max retries reached or not retryable - log and give up
+            Logger.error(errorContext + '. Max retries reached or error not retryable: ' + ex.getDetailedMessage())
+                .addTag('Stripe-Error');
+            Logger.saveLog();
+        }
+    }
+
+    /**
+     * @description Creates a new instance of StripeChainedCalloutQueueable with incremented retry count for re-enqueueing.
+     * @return StripeChainedCalloutQueueable A new instance with the same parameters but incremented retry count
+     */
+    private StripeChainedCalloutQueueable createRetryJob() {
+        Integer nextRetryCount = retryCount + 1;
+
+        if (calloutType == CREATE_PRICING_PLAN) {
+            return new StripeChainedCalloutQueueable(
+                recordId,
+                requestBody,
+                nextRetryCount
+            );
+        } else if (calloutType == CREATE_DEFAULT_METHOD) {
+            return new StripeChainedCalloutQueueable(
+                customerId,
+                recordId,
+                nextRetryCount
+            );
+        }
+
+        return null; // Should never reach here
     }
     /**
      * @description Updates a Pricing_Plan__c record with the Stripe price ID returned from a successful API callout.

@@ -7,6 +7,10 @@ public with sharing class StripeAPIService {
     private static final String SUBSCRIPTION_ENDPOINT = '/v1/subscriptions';
     private static final String SESSION_ENDPOINT = '/v1/checkout/sessions';
 
+    // Retry configuration constants for queueable jobs
+    public static final Integer MAX_RETRY_COUNT = 3;
+    public static final Integer BASE_DELAY_MINUTES = 1;
+
     /**
      * @description Creates a new customer in Stripe via API callout and returns the generated Stripe customer ID.
      *              Constructs a URL-encoded request body with customer details (name, email, phone), sends it to the
@@ -234,101 +238,46 @@ public with sharing class StripeAPIService {
     }
 
     /**
-     * @description Executes an HTTP POST callout to Stripe API with automatic retry logic for transient errors.
-     *              Implements exponential backoff for rate limits (429) and server errors (500+). Retries up to
-     *              3 times before failing. Only retries idempotent operations.
+     * @description Makes an HTTP callout to Stripe API. This method now delegates retry logic to the calling queueable classes,
+     *              which handle exponential backoff using System.enqueueJob() with delay parameters.
      * @param endPoint The full URL endpoint for the Stripe API callout
      * @param requestBody The URL-encoded request body containing API parameters
      * @param isIdempotent Whether this operation is safe to retry (GET, DELETE, or idempotent POST operations)
      * @return HttpResponse The HTTP response from Stripe API
-     * @throws StripeException If the request fails after all retries or for non-retryable errors
+     * @throws StripeException If the request fails, includes retryability information for queueable classes to handle
      */
     public static HttpResponse makeCalloutWithRetry(String endPoint, String requestBody, Boolean isIdempotent) {
-        Integer maxRetries = 3;
-        Integer baseDelay = 1000; // 1 second base delay in milliseconds
-        HttpResponse res;
-        StripeException lastException;
+        try {
+            HttpResponse res = makeCallout(endPoint, requestBody);
 
-        for (Integer attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-                res = makeCallout(endPoint, requestBody);
+            // Check if response indicates an error
+            if (res.getStatusCode() >= 400) {
+                // Parse and throw appropriate exception
+                StripeException ex = StripeException.fromHttpResponse(res);
 
-                // Check if response indicates an error
-                if (res.getStatusCode() >= 400) {
-                    // Parse and throw appropriate exception
-                    StripeException ex = StripeException.fromHttpResponse(res);
+                // Log the error
+                Logger.error('Stripe API error: ' + ex.getDetailedMessage())
+                    .addTag('Stripe-Error');
+                Logger.saveLog();
 
-                    // Only retry if the operation is idempotent and the error is retryable
-                    if (isIdempotent && ex.isRetryable() && attempt < maxRetries) {
-                        // Calculate exponential backoff delay
-                        Integer delay = baseDelay * (Integer)Math.pow(2, attempt);
-
-                        Logger.warn('Retryable error encountered. Attempt ' + (attempt + 1) + ' of ' + maxRetries + '. Retrying in ' + delay + 'ms')
-                            .setMessage(ex.getDetailedMessage())
-                            .addTag('Stripe-Retry');
-                        Logger.saveLog();
-
-                        // Sleep for the calculated delay
-                        sleep(delay);
-
-                        lastException = ex;
-                        continue; // Retry the request
-                    } else {
-                        // Not retryable, max retries reached, or not idempotent - throw exception
-                        Logger.error('Stripe API error: ' + ex.getDetailedMessage())
-                            .addTag('Stripe-Error');
-                        Logger.saveLog();
-                        throw ex;
-                    }
-                } else {
-                    // Success - return the response
-                    return res;
-                }
-            } catch (StripeException ex) {
-                // Re-throw StripeExceptions
+                // The exception includes isRetryable() method that queueable classes will use
+                // to determine if they should retry with exponential backoff
                 throw ex;
-            } catch (Exception ex) {
-                // Network or other errors - retry if idempotent
-                if (isIdempotent && attempt < maxRetries) {
-                    Integer delay = baseDelay * (Integer)Math.pow(2, attempt);
-
-                    Logger.warn('Network error encountered. Attempt ' + (attempt + 1) + ' of ' + maxRetries + '. Retrying in ' + delay + 'ms')
-                        .setMessage(ex.getMessage())
-                        .addTag('Stripe-Retry');
-                    Logger.saveLog();
-
-                    sleep(delay);
-                    continue;
-                } else {
-                    Logger.error('Failed to complete Stripe API request: ' + ex.getMessage())
-                        .addTag('Stripe-Error');
-                    Logger.saveLog();
-                    throw new StripeException('Network error: ' + ex.getMessage());
-                }
+            } else {
+                // Success - return the response
+                return res;
             }
-        }
+        } catch (StripeException ex) {
+            // Re-throw StripeExceptions (already logged)
+            throw ex;
+        } catch (Exception ex) {
+            // Network or other errors
+            Logger.error('Failed to complete Stripe API request: ' + ex.getMessage())
+                .addTag('Stripe-Error');
+            Logger.saveLog();
 
-        // If we get here, all retries failed
-        if (lastException != null) {
-            throw lastException;
-        }
-
-        throw new StripeException('Request failed after ' + maxRetries + ' retries');
-    }
-
-    /**
-     * @description Implements a sleep delay using a long-polling approach.
-     *              This is necessary because Apex does not have a native Thread.sleep() method.
-     * @param milliseconds The number of milliseconds to sleep
-     */
-    private static void sleep(Integer milliseconds) {
-        Long startTime = System.currentTimeMillis();
-        Long endTime = startTime + milliseconds;
-
-        // Long-polling approach to simulate sleep
-        while (System.currentTimeMillis() < endTime) {
-            // Busy wait - not ideal but necessary in Apex
-            // In practice, this is acceptable for short delays (1-8 seconds)
+            // Wrap in StripeException so queueable classes can check retryability
+            throw new StripeException('Network error: ' + ex.getMessage());
         }
     }
 }
