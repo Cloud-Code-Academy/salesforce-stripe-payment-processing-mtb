@@ -435,12 +435,66 @@ class PaymentHandler:
                     "description": line.get("description")
                 })
 
+        # Extract subscription ID with fallbacks for different Stripe API versions
+        # Stripe API 2025+ moved subscription to nested parent objects
+        subscription_id = invoice.get("subscription")  # Try top-level first (old API)
+        subscription_source = "top_level"
+
+        if not subscription_id:
+            # Try parent.subscription_details.subscription (new API format)
+            parent = invoice.get("parent", {})
+            if parent.get("type") == "subscription_details":
+                subscription_details = parent.get("subscription_details", {})
+                subscription_id = subscription_details.get("subscription")
+                if subscription_id:
+                    subscription_source = "parent.subscription_details"
+
+        if not subscription_id:
+            # Try first line item's subscription (most reliable for subscription invoices)
+            lines_data = invoice.get("lines", {}).get("data", [])
+            if lines_data:
+                first_line = lines_data[0]
+                line_parent = first_line.get("parent", {})
+                if line_parent.get("type") == "subscription_item_details":
+                    sub_item_details = line_parent.get("subscription_item_details", {})
+                    subscription_id = sub_item_details.get("subscription")
+                    if subscription_id:
+                        subscription_source = "line_items[0].parent.subscription_item_details"
+
+        # Log which source was used
+        if subscription_id:
+            logger.info(
+                f"Extracted subscription ID from invoice",
+                extra={
+                    "invoice_id": invoice.get("id"),
+                    "subscription_id": subscription_id,
+                    "source": subscription_source
+                }
+            )
+        else:
+            logger.warning(
+                f"No subscription ID found in invoice",
+                extra={
+                    "invoice_id": invoice.get("id"),
+                    "checked_sources": ["top_level", "parent.subscription_details", "line_items"]
+                }
+            )
+
+        # Extract payment method type if available
+        payment_method_type = None
+        payment_intent = invoice.get("payment_intent")
+        if payment_intent and isinstance(payment_intent, dict):
+            # payment_intent is expanded object
+            payment_method_types = payment_intent.get("payment_method_types", [])
+            payment_method_type = payment_method_types[0] if payment_method_types else None
+
         return {
             "invoice_id": invoice["id"],
-            "subscription_id": invoice.get("subscription"),
+            "subscription_id": subscription_id,
             "customer_id": invoice.get("customer"),
-            "payment_intent_id": invoice.get("payment_intent"),
+            "payment_intent_id": invoice.get("payment_intent") if isinstance(invoice.get("payment_intent"), str) else invoice.get("payment_intent", {}).get("id"),
             "amount_paid": invoice["amount_paid"] / 100.0,  # Convert cents to dollars
+            "amount_due": invoice.get("amount_due", 0) / 100.0 if invoice.get("amount_due") else 0,  # Convert cents to dollars
             "currency": invoice["currency"].upper(),
             "period_start": invoice.get("period_start"),
             "period_end": invoice.get("period_end"),
@@ -449,6 +503,7 @@ class PaymentHandler:
             "discounts_applied": invoice.get("total_discount_amounts", [{}])[0].get("amount", 0) / 100.0 if invoice.get("total_discount_amounts") else 0,
             "paid": invoice.get("paid", False),
             "pdf_url": invoice.get("invoice_pdf"),
+            "payment_method_type": payment_method_type,
             "line_items": line_items
         }
 
