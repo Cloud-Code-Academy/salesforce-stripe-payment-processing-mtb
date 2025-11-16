@@ -35,7 +35,7 @@ class SalesforceSubscription(BaseModel):
     Stripe_Subscription_ID__c: str = Field(
         description="External ID - Stripe subscription ID"
     )
-    Stripe_Customer__c: Optional[str] = Field(
+    Contact__c: Optional[str] = Field(
         None, description="Lookup to Contact (Contact.Id)"
     )
     PricingPlans__c: Optional[str] = None
@@ -66,7 +66,7 @@ class SalesforceSubscription(BaseModel):
         json_schema_extra = {
             "example": {
                 "Stripe_Subscription_ID__c": "sub_ABC123",
-                "Stripe_Customer__c": "0031700000IZ3STABC",
+                "Contact__c": "0031700000IZ3STABC",
                 "Status__c": "active",
                 "Amount__c": 29.99,
                 "Currency__c": "USD",
@@ -83,7 +83,7 @@ class SalesforceInvoice(BaseModel):
     Stripe_Subscription__c: Optional[str] = Field(
         None, description="Lookup to Stripe_Subscription__c"
     )
-    Stripe_Customer__c: Optional[str] = Field(
+    Contact__c: Optional[str] = Field(
         None, description="Lookup to Contact (Contact.Id)"
     )
     Line_Items__c: Optional[str] = None
@@ -105,7 +105,7 @@ class SalesforceInvoice(BaseModel):
             "example": {
                 "Stripe_Invoice_ID__c": "in_ABC123",
                 "Stripe_Subscription__c": "sub_ABC123",
-                "Stripe_Customer__c": "0031700000IZ3STABC",
+                "Contact__c": "0031700000IZ3STABC",
                 "Status__c": "paid",
                 "Tax_Amount__c": 2.50,
                 "Discounts_Applied__c": 5.00,

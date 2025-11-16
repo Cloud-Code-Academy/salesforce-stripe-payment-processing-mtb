@@ -17,12 +17,13 @@ public with sharing class StripeSubscriptionTriggerHelper {
      */
     public static void processStripeSubscriptionAfterUpdate(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
         // Validate input parameters
-        if (newList == null || newList.isEmpty() || oldMap == null) {
+        if (newList == null || newList.isEmpty()) {
             return;
         }
 
         List<Stripe_Subscription__c> subscriptionsForProcess = new List<Stripe_Subscription__c>();
         List<Stripe_Subscription__c> subscriptionsForUpdate = new List<Stripe_Subscription__c>();
+        Boolean isInsert = (oldMap == null || oldMap.isEmpty());
 
         if (!Schema.SObjectType.Stripe_Subscription__c.isAccessible()) {
             throw new SecurityException('User does not have read access to Stripe_Subscription__c object');
@@ -33,10 +34,10 @@ public with sharing class StripeSubscriptionTriggerHelper {
         }
 
         for (Stripe_Subscription__c subscription : newList) {
-            Stripe_Subscription__c oldSubscription = oldMap.get(subscription.Id);
+            Stripe_Subscription__c oldSubscription = isInsert ? null : oldMap.get(subscription.Id);
             // Changed logic: Instead of creating subscription directly, create checkout session which will create the subscription
-            if (oldSubscription != null
-                && oldSubscription.Sync_Status__c != subscription.Sync_Status__c
+            Boolean statusChanged = isInsert ? true : (oldSubscription != null && oldSubscription.Sync_Status__c != subscription.Sync_Status__c);
+            if (statusChanged
                 && subscription.Sync_Status__c == STATUS_SEND_TO_STRIPE
                 && String.isBlank(subscription.Stripe_Subscription_ID__c)
                 && !String.isBlank(subscription.Stripe_Price_ID__c)
@@ -155,11 +156,12 @@ public with sharing class StripeSubscriptionTriggerHelper {
      */
     public static void createPricingPlansUponSelection(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
         // Validate input parameters
-        if (newList == null || newList.isEmpty() || oldMap == null) {
+        if (newList == null || newList.isEmpty()) {
             return;
         }
 
         List<Pricing_Plan__c> pricingPlansForInsert = new List<Pricing_Plan__c>();
+        Boolean isInsert = (oldMap == null || oldMap.isEmpty());
 
         if (!Schema.SObjectType.Stripe_Subscription__c.isAccessible()) {
             throw new SecurityException('User does not have read access to Stripe_Subscription__c object');
@@ -170,9 +172,9 @@ public with sharing class StripeSubscriptionTriggerHelper {
         }
 
         for (Stripe_Subscription__c subscription : newList) {
-            Stripe_Subscription__c oldSubscription = oldMap.get(subscription.Id);
-            if (oldSubscription != null && subscription.PricingPlans__c != null
-                && oldSubscription.PricingPlans__c != subscription.PricingPlans__c) {
+            Stripe_Subscription__c oldSubscription = isInsert ? null : oldMap.get(subscription.Id);
+            Boolean planChanged = isInsert ? true : (oldSubscription != null && oldSubscription.PricingPlans__c != subscription.PricingPlans__c);
+            if (subscription.PricingPlans__c != null && planChanged) {
 
                 // Retrieve metadata and validate it exists
                 Stripe_Price__mdt stripePrice = Stripe_Price__mdt.getInstance(subscription.PricingPlans__c);
