@@ -35,8 +35,7 @@ public class ContactTriggerHelperTest {
             Test.stopTest();
 
             // Verify the Contact was created successfully
-            // Note: Stripe customer data (Customer_Name__c, Customer_Email__c, etc.)
-            // is populated by middleware webhooks, not by trigger
+            // Note: Stripe customer data is populated by middleware webhooks, not by trigger
             Contact insertedContact = [
                 SELECT Id, FirstName, LastName, Email, Phone
                 FROM Contact

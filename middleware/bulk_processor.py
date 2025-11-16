@@ -448,12 +448,9 @@ async def process_customer_updates_bulk(events: List[Dict[str, Any]]) -> None:
 
             customer_data = event.event_object
 
-            # Map to Salesforce Customer record
+            # Map to Salesforce Contact record (Stripe-specific fields)
             salesforce_customer = {
                 "Stripe_Customer_ID__c": customer_data.get("id"),
-                "Customer_Email__c": customer_data.get("email"),
-                "Customer_Name__c": customer_data.get("name"),
-                "Customer_Phone__c": customer_data.get("phone"),
                 "Default_Payment_Method__c": customer_data.get("invoice_settings", {}).get("default_payment_method")
             }
 

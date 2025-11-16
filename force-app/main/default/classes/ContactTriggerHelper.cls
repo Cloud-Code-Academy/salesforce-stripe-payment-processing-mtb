@@ -1,8 +1,6 @@
 public with sharing class ContactTriggerHelper {
     /**
-     * @description Helper class for Contact trigger operations. Contact now stores Stripe customer data directly.
-     *              Stripe customer data is populated by the middleware via webhooks/API sync.
-     *              This method is maintained for logging and monitoring purposes.
+     * @description Helper class for Contact trigger operations. 
      * @param newList List of newly inserted Contact records
      */
     public static void processContactAfterInsert(List<Contact> newList){
@@ -15,9 +13,35 @@ public with sharing class ContactTriggerHelper {
                 return;
             }
 
+            List<Contact> stripeCustomersForProcess = new List<Contact>();
+            //Filter out records that already have Customer ID
+            for (Contact customer : newList) {
+                if (String.isBlank(customer.Stripe_Customer_ID__c)) {
+                    stripeCustomersForProcess.add(customer);
+                }
+            }
+            // Loop through each Customer
+            for (Contact filteredCustomer : stripeCustomersForProcess) {
+                // Enqueue the callout
+                try {
+                    StripeCalloutQueueable callout = new StripeCalloutQueueable(
+                        filteredCustomer.Id,
+                        filteredCustomer.FirstName + ' ' + filteredCustomer.LastName,
+                        filteredCustomer.Email,
+                        filteredCustomer.Phone
+                    );
+                    if (!Test.isRunningTest()) {
+                        System.enqueueJob(callout);
+                    }
+                } catch (Exception ex) {
+                    Logger.error('Failed to make callout: ', ex);
+                    Logger.saveLog();
+                }
+            }
+
             // Note: Stripe customer data is now stored directly on Contact
             // and populated by middleware webhooks/API sync
-            Logger.info('Processed ' + newList.size() + ' new Contact records. Stripe data will be populated via middleware.')
+            Logger.info('Processed ' + newList.size() + ' new Contact records. Stripe data will be populated.')
                 .addTag('ContactTriggerHelper')
                 .addTag('Success');
             Logger.saveLog();
@@ -129,13 +153,10 @@ public with sharing class ContactTriggerHelper {
                     // Call Stripe API to update customer
                     String updatedCustomerId = StripeAPIService.updateCustomer(customerWrapper, cont.Stripe_Customer_ID__c);
 
-                    // Update Contact record with Stripe Customer ID and customer data
+                    // Update Contact record with Stripe Customer ID
                     Contact contactToUpdate = new Contact(
                         Id = cont.Id,
-                        Stripe_Customer_ID__c = updatedCustomerId,
-                        Customer_Email__c = cont.Email,
-                        Customer_Name__c = customerName,
-                        Customer_Phone__c = cont.Phone
+                        Stripe_Customer_ID__c = updatedCustomerId
                     );
                     contactsToUpdateSalesforce.add(contactToUpdate);
 

@@ -386,12 +386,13 @@ bulk_service = get_bulk_api_service()
 
 # Upsert records
 result = await bulk_service.upsert_records(
-    object_name="Stripe_Customer__c",
+    object_name="Contact",
     records=[
         {
             "Stripe_Customer_ID__c": "cus_123",
-            "Customer_Email__c": "user@example.com",
-            "Customer_Name__c": "John Doe"
+            "Email": "user@example.com",
+            "FirstName": "John",
+            "LastName": "Doe"
         }
     ],
     external_id_field="Stripe_Customer_ID__c",
