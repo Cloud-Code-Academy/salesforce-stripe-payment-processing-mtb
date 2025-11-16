@@ -153,10 +153,13 @@ public with sharing class ContactTriggerHelper {
                     // Call Stripe API to update customer
                     String updatedCustomerId = StripeAPIService.updateCustomer(customerWrapper, cont.Stripe_Customer_ID__c);
 
-                    // Update Contact record with Stripe Customer ID
+                    // Update Contact record with Stripe Customer ID and customer data
                     Contact contactToUpdate = new Contact(
                         Id = cont.Id,
                         Stripe_Customer_ID__c = updatedCustomerId
+                        // Email = cont.Email,
+                        // Customer_Name__c = customerName,
+                        // Customer_Phone__c = cont.Phone
                     );
                     contactsToUpdateSalesforce.add(contactToUpdate);
 

@@ -96,9 +96,27 @@ public class TestDataFactory {
         for (Integer i = 0; i < numberOfSubscriptions; i++) {
             subscriptions.add(new Stripe_Subscription__c(
                 Contact__c = contactId,
-                Stripe_Subscription_ID__c = 'sub_test' + i,
                 Status__c = 'active',
+                Stripe_Subscription_ID__c = 'sub_test' + i,
                 Product_Plan_Name__c = 'Test Plan ' + i
+            ));
+        }
+        insert subscriptions;
+        return subscriptions;
+    }
+
+    /**
+     * @description Creates test Stripe_Subscription__c records
+     * @param numberOfSubscriptions The number of subscriptions to create
+     * @param contactId The Contact Id to associate with subscriptions
+     * @return List<Stripe_Subscription__c> List of created subscriptions
+     */
+    public static List<Stripe_Subscription__c> createUnsyncedStripeSubscriptions(Integer numberOfSubscriptions, Id contactId) {
+        List<Stripe_Subscription__c> subscriptions = new List<Stripe_Subscription__c>();
+        for (Integer i = 0; i < numberOfSubscriptions; i++) {
+            subscriptions.add(new Stripe_Subscription__c(
+                Contact__c = contactId,
+                Sync_Status__c = 'Draft'
             ));
         }
         insert subscriptions;

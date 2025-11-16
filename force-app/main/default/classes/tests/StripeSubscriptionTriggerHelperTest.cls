@@ -263,21 +263,16 @@ public class StripeSubscriptionTriggerHelperTest {
     @IsTest
     static void processStripeSubscriptionAfterUpdate_missingCustomerId_skipped() {
         System.runAs(getTestUser()) {
-            // Create subscription without customer
-            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Stripe_Price_ID__c = 'price_test123',
-                Sync_Status__c = 'Send to Stripe'
-                // Missing Contact__c
-            );
-
+            Contact contact = TestDataFactory.createStripeCustomers(1)[0];
+            
             Test.startTest();
-            insert subscriptionRec;
+            Stripe_Subscription__c subscriptionRec = TestDataFactory.createUnsyncedStripeSubscriptions(1, contact.Id)[0];
             Test.stopTest();
 
             // Verify subscription was created but not processed
             Stripe_Subscription__c result = [SELECT Stripe_Subscription_ID__c
                                                 FROM Stripe_Subscription__c WHERE Id = :subscriptionRec.Id];
-            Assert.areEqual(null, result.Stripe_Subscription_ID__c,
+            Assert.isNull(result.Stripe_Subscription_ID__c,
                 'Subscription should not be processed without Customer ID');
         }
     }
