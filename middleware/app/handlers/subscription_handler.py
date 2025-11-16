@@ -104,23 +104,45 @@ class SubscriptionHandler:
 
         # Update subscription with Stripe subscription ID and completed status
         # Note: Contact__c is a Master-Detail field and cannot be updated, only set on insert
+        # Check payment status to determine if we should set status to active
+        payment_status = session_data.get("payment_status")
+        logger.info(
+            f"Checkout session payment status: {payment_status}",
+            extra={"session_id": session_id, "payment_status": payment_status}
+        )
+
         if salesforce_record_id:
             # Exclude Contact__c (Master-Detail) and Stripe_Subscription_ID__c (External ID) from updates
             # External ID fields can cause duplicates if another record was created via customer.subscription.created
+            update_data = {
+                "Stripe_Checkout_Session_ID__c": session_id,
+                "Sync_Status__c": "Completed"
+            }
+            # Set status based on payment status
+            if payment_status == "paid":
+                update_data["Status__c"] = "active"
+            elif payment_status == "unpaid":
+                update_data["Status__c"] = "unpaid"
+
             result = await salesforce_service.update_record(
                 sobject_type="Stripe_Subscription__c",
                 record_id=salesforce_record_id,
-                record_data={
-                    "Stripe_Checkout_Session_ID__c": session_id,
-                    "Sync_Status__c": "Completed"
-                }
+                record_data=update_data
             )
         else:
             # Include Contact__c only when creating new records
+            # Determine status based on payment status
+            subscription_status = None
+            if payment_status == "paid" or payment_status == "no_payment_required":
+                subscription_status = "active"
+            elif payment_status == "unpaid":
+                subscription_status = "unpaid"
+
             salesforce_subscription = SalesforceSubscription(
                 Stripe_Subscription_ID__c=subscription_id,
                 Stripe_Checkout_Session_ID__c=session_id,
                 Contact__c=salesforce_customer_id,
+                Status__c=subscription_status,
                 Sync_Status__c="Completed",
             )
             result = await salesforce_service.upsert_subscription(salesforce_subscription)

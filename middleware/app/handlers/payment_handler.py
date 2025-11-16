@@ -1238,9 +1238,9 @@ class PaymentHandler:
 
         try:
             await salesforce_service.update_record(
-                sobject="Stripe_Subscription__c",
+                sobject_type="Stripe_Subscription__c",
                 record_id=subscription_sf_id,
-                data=update_data
+                record_data=update_data
             )
 
             logger.info(
@@ -1292,9 +1292,9 @@ class PaymentHandler:
 
         try:
             await salesforce_service.update_record(
-                sobject="Stripe_Subscription__c",
+                sobject_type="Stripe_Subscription__c",
                 record_id=subscription_sf_id,
-                data=update_data
+                record_data=update_data
             )
 
             logger.info(f"Updated subscription to past_due: {subscription_id}")
