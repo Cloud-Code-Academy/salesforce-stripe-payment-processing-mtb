@@ -105,16 +105,15 @@ class SubscriptionHandler:
         # Update subscription with Stripe subscription ID and completed status
         # Note: Contact__c is a Master-Detail field and cannot be updated, only set on insert
         if salesforce_record_id:
-            # Exclude Contact__c from updates since it's a Master-Detail field
-            salesforce_subscription = SalesforceSubscription(
-                Stripe_Subscription_ID__c=subscription_id,
-                Stripe_Checkout_Session_ID__c=session_id,
-                Sync_Status__c="Completed",
-            )
+            # Exclude Contact__c (Master-Detail) and Stripe_Subscription_ID__c (External ID) from updates
+            # External ID fields can cause duplicates if another record was created via customer.subscription.created
             result = await salesforce_service.update_record(
                 sobject_type="Stripe_Subscription__c",
                 record_id=salesforce_record_id,
-                record_data=salesforce_subscription.model_dump(mode="json", exclude_none=True)
+                record_data={
+                    "Stripe_Checkout_Session_ID__c": session_id,
+                    "Sync_Status__c": "Completed"
+                }
             )
         else:
             # Include Contact__c only when creating new records
