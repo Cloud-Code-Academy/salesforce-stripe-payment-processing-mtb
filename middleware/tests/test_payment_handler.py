@@ -121,7 +121,7 @@ class TestInvoicePaymentSucceeded:
                 "records": [
                     {
                         "Id": "a00xxx000000001",
-                        "Stripe_Customer__c": "a02xxx000000001"
+                        "Contact__c": "a02xxx000000001"
                     }
                 ]
             })
@@ -165,7 +165,7 @@ class TestInvoicePaymentSucceeded:
         """
         with patch('app.handlers.payment_handler.sf_service', mock_salesforce_service):
             mock_salesforce_service.query_records = AsyncMock(return_value={
-                "records": [{"Id": "a00xxx000000001", "Stripe_Customer__c": "a02xxx"}]
+                "records": [{"Id": "a00xxx000000001", "Contact__c": "a02xxx"}]
             })
             
             await PaymentHandler.handle_invoice_payment_succeeded(
@@ -234,7 +234,7 @@ class TestInvoicePaymentFailed:
         """
         with patch('app.handlers.payment_handler.sf_service', mock_salesforce_service):
             mock_salesforce_service.query_records = AsyncMock(return_value={
-                "records": [{"Id": "a00xxx000000001", "Stripe_Customer__c": "a02xxx"}]
+                "records": [{"Id": "a00xxx000000001", "Contact__c": "a02xxx"}]
             })
             
             result = await PaymentHandler.handle_invoice_payment_failed(
@@ -271,7 +271,7 @@ class TestInvoicePaymentFailed:
         """
         with patch('app.handlers.payment_handler.sf_service', mock_salesforce_service):
             mock_salesforce_service.query_records = AsyncMock(return_value={
-                "records": [{"Id": "a00xxx000000001", "Stripe_Customer__c": "a02xxx"}]
+                "records": [{"Id": "a00xxx000000001", "Contact__c": "a02xxx"}]
             })
             
             await PaymentHandler.handle_invoice_payment_failed(
@@ -304,7 +304,7 @@ class TestInvoicePaymentFailed:
         
         with patch('app.handlers.payment_handler.sf_service', mock_salesforce_service):
             mock_salesforce_service.query_records = AsyncMock(return_value={
-                "records": [{"Id": "a00xxx000000001", "Stripe_Customer__c": "a02xxx"}]
+                "records": [{"Id": "a00xxx000000001", "Contact__c": "a02xxx"}]
             })
             
             result = await PaymentHandler.handle_invoice_payment_failed(event_copy)

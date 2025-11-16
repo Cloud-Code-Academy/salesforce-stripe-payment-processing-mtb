@@ -103,21 +103,27 @@ class SubscriptionHandler:
                 )
 
         # Update subscription with Stripe subscription ID and completed status
-        salesforce_subscription = SalesforceSubscription(
-            Stripe_Subscription_ID__c=subscription_id,
-            Stripe_Checkout_Session_ID__c=session_id,
-            Stripe_Customer__c=salesforce_customer_id,
-            Sync_Status__c="Completed",
-        )
-
-        # Use update if we found existing record, otherwise upsert
+        # Note: Contact__c is a Master-Detail field and cannot be updated, only set on insert
         if salesforce_record_id:
+            # Exclude Contact__c from updates since it's a Master-Detail field
+            salesforce_subscription = SalesforceSubscription(
+                Stripe_Subscription_ID__c=subscription_id,
+                Stripe_Checkout_Session_ID__c=session_id,
+                Sync_Status__c="Completed",
+            )
             result = await salesforce_service.update_record(
                 sobject_type="Stripe_Subscription__c",
                 record_id=salesforce_record_id,
                 record_data=salesforce_subscription.model_dump(mode="json", exclude_none=True)
             )
         else:
+            # Include Contact__c only when creating new records
+            salesforce_subscription = SalesforceSubscription(
+                Stripe_Subscription_ID__c=subscription_id,
+                Stripe_Checkout_Session_ID__c=session_id,
+                Contact__c=salesforce_customer_id,
+                Sync_Status__c="Completed",
+            )
             result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
         logger.info(
@@ -257,7 +263,7 @@ class SubscriptionHandler:
 
         salesforce_subscription = SalesforceSubscription(
             Stripe_Subscription_ID__c=subscription_data["id"],
-            Stripe_Customer__c=salesforce_customer_id,
+            Contact__c=salesforce_customer_id,
             Status__c=subscription_data.get("status"),
             Current_Period_Start__c=datetime.fromtimestamp(
                 subscription_data["current_period_start"]
@@ -345,7 +351,7 @@ class SubscriptionHandler:
 
         salesforce_subscription = SalesforceSubscription(
             Stripe_Subscription_ID__c=subscription_data["id"],
-            Stripe_Customer__c=salesforce_customer_id,
+            Contact__c=salesforce_customer_id,
             Status__c=subscription_data.get("status"),
             Current_Period_Start__c=datetime.fromtimestamp(
                 subscription_data["current_period_start"]

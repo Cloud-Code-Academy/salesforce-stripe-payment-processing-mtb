@@ -11,6 +11,11 @@
         <valueSetDefinition>
             <sorted>false</sorted>
             <value>
+                <fullName>draft</fullName>
+                <default>true</default>
+                <label>Draft</label>
+            </value>
+            <value>
                 <fullName>active</fullName>
                 <default>false</default>
                 <label>Active</label>
