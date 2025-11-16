@@ -728,7 +728,7 @@ class PaymentHandler:
                 transaction_record_data["Stripe_Subscription__c"] = subscription_sf_id
 
             transaction_result = await salesforce_service.upsert_record(
-                sobject="Payment_Transaction__c",
+                sobject_type="Payment_Transaction__c",
                 external_id_field="Stripe_Payment_Intent_ID__c",
                 external_id_value=invoice_data["payment_intent_id"],
                 record_data={k: v for k, v in transaction_record_data.items() if v is not None and k != "Stripe_Payment_Intent_ID__c"}
