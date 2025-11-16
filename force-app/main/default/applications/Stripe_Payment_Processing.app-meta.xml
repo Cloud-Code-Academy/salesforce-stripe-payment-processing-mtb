@@ -18,6 +18,7 @@
     <tabs>Payment_Transaction__c</tabs>
     <tabs>standard-report</tabs>
     <tabs>standard-Dashboard</tabs>
+    <tabs>Stripe_Invoice__c</tabs>
     <uiType>Lightning</uiType>
     <utilityBar>Stripe_Payment_Processing_UtilityBar</utilityBar>
 </CustomApplication>
