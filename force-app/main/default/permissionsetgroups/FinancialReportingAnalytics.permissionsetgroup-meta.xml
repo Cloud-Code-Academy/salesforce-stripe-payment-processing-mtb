@@ -3,7 +3,6 @@
     <description>Provides Finance Team members with comprehensive access to monitor subscription revenue, track payments, and generate financial reports.</description>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Financial Reporting &amp; Analytics</label>
-    <permissionSets>StripeReportDashboardAccess</permissionSets>
     <permissionSets>Stripe_Customer_Contact_Access</permissionSets>
     <permissionSets>Stripe_Invoice_Access</permissionSets>
     <permissionSets>Stripe_Payment_Transaction_Access</permissionSets>
