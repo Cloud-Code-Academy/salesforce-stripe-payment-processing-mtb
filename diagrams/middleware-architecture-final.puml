@@ -34,6 +34,12 @@ package "Lambda 1: Webhook Receiver" LIGHTGREEN {
     component [Event\nRouter] as router
 }
 
+' === AWS EVENTBRIDGE ===
+package "AWS EventBridge" LIGHTORANGE {
+    component [Event Bus\n(stripe-events)] as eventbus
+    component [Routing Rules] as rules
+}
+
 ' === AWS SQS QUEUES ===
 package "AWS SQS" LIGHTYELLOW {
     queue "Main Event Queue\n(HIGH/MEDIUM)" as main_queue #lightgreen
@@ -90,47 +96,51 @@ apigw -down-> fastapi : **2.** Lambda invocation
 
 fastapi -down-> verify : **3.** Verify HMAC-SHA256\nsignature
 
-verify -down-> router : **4.** Route by priority
+verify -down-> router : **4.** Parse event\nand publish
+
+router -down-> eventbus : **5.** Publish to\nEventBridge Bus
+
+eventbus -down-> rules : **6.** Route by\nevent type
 
 ' ============================================
 ' FLOW 2A: HIGH/MEDIUM PRIORITY (REST API)
 ' ============================================
 
-router -right-> main_queue : **5a.** HIGH/MEDIUM\npayment_intent.succeeded,\ninvoice.payment_failed,\nsubscription events
+rules -right-> main_queue : **7a.** HIGH/MEDIUM\nRouted to REST Queue
 note right on link
   Priority: HIGH or MEDIUM
   Route to REST API
 end note
 
-main_queue -down-> processor : **6.** Poll (batch of 5)\nwith long polling
+main_queue -down-> processor : **8.** Poll (batch of 5)\nwith long polling
 
-processor -down-> payment_handler : **7a.** Payment events
-processor -down-> customer_handler : **7b.** Customer events
-processor -down-> subscription_handler : **7c.** Subscription events
+processor -down-> payment_handler : **9a.** Payment events
+processor -down-> customer_handler : **9b.** Customer events
+processor -down-> subscription_handler : **9c.** Subscription events
 
-payment_handler -down-> rest_client : **8.** Process event
-customer_handler -down-> rest_client : **8.** Process event
-subscription_handler -down-> rest_client : **8.** Process event
+payment_handler -down-> rest_client : **10.** Process event
+customer_handler -down-> rest_client : **10.** Process event
+subscription_handler -down-> rest_client : **10.** Process event
 
-rest_client -down-> sf_rest : **9.** REST API Call\n(Upsert with\nexternal ID)
+rest_client -down-> sf_rest : **11.** REST API Call\n(Upsert with\nexternal ID)
 
 ' ============================================
 ' FLOW 2B: LOW PRIORITY (BULK API)
 ' ============================================
 
-router -left-> low_queue : **5b.** LOW\ncustomer.updated\n(metadata changes)
+rules -left-> low_queue : **7b.** LOW\nRouted to Bulk Queue
 note left on link
   Priority: LOW
   Route to Bulk API
 end note
 
-low_queue -down-> batch : **10.** Poll (batch of 10)\nwait up to 30s
+low_queue -down-> batch : **12.** Poll (batch of 10)\nwait up to 30s
 
-batch -down-> csv : **11.** Transform to CSV
+batch -down-> csv : **13.** Transform to CSV
 
-csv -down-> bulk_client : **12.** Submit bulk job
+csv -down-> bulk_client : **14.** Submit bulk job
 
-bulk_client -down-> sf_bulk : **13.** Bulk API 2.0\n(Upsert job)
+bulk_client -down-> sf_bulk : **15.** Bulk API 2.0\n(Upsert job)
 
 ' ============================================
 ' SALESFORCE DATA FLOW
@@ -168,9 +178,14 @@ low_queue -[#red]down-> dlq : Failed after\n3 retries
 legend right
   |<#lightgreen>| **Lambda Functions** |
   |<#lightyellow>| **SQS Queues** |
-  |<#lightorange>| **AWS Services** |
+  |<#lightorange>| **AWS Services (API GW, EventBridge)** |
   |<#lightblue>| **Salesforce** |
   |<#E6E6FA>| **Bulk Processor** |
+
+  **Event Routing:**
+  • **EventBridge**: Routes events based on type & priority
+  • **HIGH/MEDIUM**: REST API Queue
+  • **LOW**: Bulk API Queue
 
   **Event Priorities:**
   • **HIGH**: payment/invoice failures, cancellations
@@ -182,6 +197,7 @@ legend right
   • **Bulk API 2.0**: Batched (< 60s accumulation + processing)
 
   **Benefits:**
+  • EventBridge provides scalable event routing
   • 90% reduction in API calls for customer updates
   • Critical events never blocked by batch processing
   • Automatic retry with DLQ for failures
