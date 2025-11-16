@@ -17,7 +17,6 @@ public with sharing class StripeAPIService {
      * @throws StripeException If the API call fails (includes specific subtype based on error)
      */
     public static String createCustomer(StripeWrapper.CustomerWrapper customerWrapper){
-        System.debug('customerWrapper: ' + customerWrapper);
         String endPoint = API_NAMED_CREDENTIALS + CUSTOMER_ENDPOINT;
         String requestBody = 'name=' + EncodingUtil.urlEncode(customerWrapper.name, 'UTF-8') +
                                 '&email=' + EncodingUtil.urlEncode(customerWrapper.email, 'UTF-8') +
