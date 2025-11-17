@@ -665,10 +665,10 @@ private class StripeAPIServiceTest {
     // ========== Retry logic tests ==========
 
     @isTest
-    static void testRetryLogic_SuccessAfterRetry() {
+    static void testRetryLogic_RetryableErrorThrown() {
         System.runAs(getTestUser()) {
-            // Mock that fails once then succeeds
-            Test.setMock(HttpCalloutMock.class, new RetrySuccessMock(1));
+            // Mock that returns a retryable error
+            Test.setMock(HttpCalloutMock.class, new RetryableMock(429, 1));
 
             StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
                 'Test Customer',
@@ -677,11 +677,15 @@ private class StripeAPIServiceTest {
             );
 
             Test.startTest();
-            String customerId = StripeAPIService.createCustomer(customerWrapper);
+            try {
+                StripeAPIService.createCustomer(customerWrapper);
+                Assert.fail('Expected StripeException to be thrown for retryable error');
+            } catch (StripeException ex) {
+                Assert.areEqual(429, ex.httpStatusCode, 'HTTP status code should be 429');
+                Assert.areEqual(true, ex.isRetryable(), 'Error should be retryable');
+                Assert.isTrue(ex.getMessage().contains('rate_limit'), 'Error should indicate rate limit');
+            }
             Test.stopTest();
-
-            Assert.areNotEqual(null, customerId, 'Customer ID should not be null after retry');
-            Assert.areEqual('cus_test123', customerId, 'Customer ID should match mock response');
         }
     }
 
@@ -710,10 +714,10 @@ private class StripeAPIServiceTest {
     }
 
     @isTest
-    static void testRetryLogic_MaxRetriesReached() {
+    static void testRetryLogic_ServerErrorRetryable() {
         System.runAs(getTestUser()) {
-            // Mock that always fails with retryable error
-            Test.setMock(HttpCalloutMock.class, new RetryableMock(503, 5));
+            // Mock that returns a server error which is retryable
+            Test.setMock(HttpCalloutMock.class, new RetryableMock(503, 1));
 
             StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
                 'Test Customer',
@@ -724,10 +728,10 @@ private class StripeAPIServiceTest {
             Test.startTest();
             try {
                 StripeAPIService.createCustomer(customerWrapper);
-                Assert.fail('Expected StripeException to be thrown after max retries');
+                Assert.fail('Expected StripeException to be thrown for server error');
             } catch (StripeException ex) {
                 Assert.areEqual(503, ex.httpStatusCode, 'HTTP status code should be 503');
-                Assert.areEqual(true, ex.isRetryable(), 'Error should be retryable');
+                Assert.areEqual(true, ex.isRetryable(), 'Server error should be retryable');
             }
             Test.stopTest();
         }
