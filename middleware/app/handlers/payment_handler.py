@@ -488,6 +488,47 @@ class PaymentHandler:
             payment_method_types = payment_intent.get("payment_method_types", [])
             payment_method_type = payment_method_types[0] if payment_method_types else None
 
+        # Extract period dates with fallbacks for different Stripe API versions
+        # Similar to subscription_id, period dates may be in different locations
+        period_start = invoice.get("period_start")  # Try top-level first (old API)
+        period_end = invoice.get("period_end")
+        period_source = "top_level"
+
+        # If period dates are not at top level, check parent.subscription_details (Stripe API 2025+)
+        if not period_start or not period_end:
+            parent = invoice.get("parent", {})
+            if parent.get("type") == "subscription_details":
+                subscription_details = parent.get("subscription_details", {})
+                if not period_start:
+                    period_start = subscription_details.get("period_start")
+                if not period_end:
+                    period_end = subscription_details.get("period_end")
+                if period_start or period_end:
+                    period_source = "parent.subscription_details"
+
+        # Log which source was used for period dates
+        if period_start and period_end:
+            logger.info(
+                f"Extracted period dates from invoice",
+                extra={
+                    "invoice_id": invoice.get("id"),
+                    "period_start": period_start,
+                    "period_end": period_end,
+                    "source": period_source,
+                    "dates_equal": period_start == period_end
+                }
+            )
+        else:
+            logger.warning(
+                f"Missing period dates in invoice",
+                extra={
+                    "invoice_id": invoice.get("id"),
+                    "period_start": period_start,
+                    "period_end": period_end,
+                    "checked_sources": ["top_level", "parent.subscription_details"]
+                }
+            )
+
         return {
             "invoice_id": invoice["id"],
             "subscription_id": subscription_id,
@@ -496,8 +537,8 @@ class PaymentHandler:
             "amount_paid": invoice["amount_paid"] / 100.0,  # Convert cents to dollars
             "amount_due": invoice.get("amount_due", 0) / 100.0 if invoice.get("amount_due") else 0,  # Convert cents to dollars
             "currency": invoice["currency"].upper(),
-            "period_start": invoice.get("period_start"),
-            "period_end": invoice.get("period_end"),
+            "period_start": period_start,
+            "period_end": period_end,
             "due_date": invoice.get("due_date"),
             "tax_amount": invoice.get("tax", 0) / 100.0 if invoice.get("tax") else 0,
             "discounts_applied": invoice.get("total_discount_amounts", [{}])[0].get("amount", 0) / 100.0 if invoice.get("total_discount_amounts") else 0,
@@ -1322,14 +1363,51 @@ class PaymentHandler:
     def _extract_failed_invoice_data(self, invoice: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and format failed invoice data for processing."""
         invoice_id = invoice["id"]
-        subscription_id = invoice.get("subscription")
+
+        # Extract subscription ID with fallbacks for different Stripe API versions
+        subscription_id = invoice.get("subscription")  # Try top-level first
+        if not subscription_id:
+            # Check parent.subscription_details for Stripe API 2025+
+            parent = invoice.get("parent", {})
+            if parent.get("type") == "subscription_details":
+                subscription_details = parent.get("subscription_details", {})
+                subscription_id = subscription_details.get("subscription")
+
         customer_id = invoice.get("customer")
         payment_intent_id = invoice.get("payment_intent")
         amount_due = invoice["amount_due"] / 100.0
         currency = invoice["currency"].upper()
         attempt_count = invoice.get("attempt_count", 0)
-        period_start = invoice.get("period_start")
+
+        # Extract period dates with fallbacks for different Stripe API versions
+        period_start = invoice.get("period_start")  # Try top-level first
         period_end = invoice.get("period_end")
+        period_source = "top_level"
+
+        # If period dates are not at top level, check parent.subscription_details (Stripe API 2025+)
+        if not period_start or not period_end:
+            parent = invoice.get("parent", {})
+            if parent.get("type") == "subscription_details":
+                subscription_details = parent.get("subscription_details", {})
+                if not period_start:
+                    period_start = subscription_details.get("period_start")
+                if not period_end:
+                    period_end = subscription_details.get("period_end")
+                if period_start or period_end:
+                    period_source = "parent.subscription_details"
+
+        # Log period date extraction for failed invoices
+        if period_start and period_end:
+            logger.info(
+                f"Extracted period dates from failed invoice",
+                extra={
+                    "invoice_id": invoice_id,
+                    "period_start": period_start,
+                    "period_end": period_end,
+                    "source": period_source,
+                    "dates_equal": period_start == period_end
+                }
+            )
 
         # Extract line items
         line_items = []
