@@ -108,26 +108,27 @@ This capstone project challenges you to build a **production-ready payment proce
                            │
 ┌──────────────────────────┴────────────────────────────────────────┐
 │            SALESFORCE DATA LAYER (Custom Objects)                │
-│  ├─ Stripe_Customer__c                                           │
-│  ├─ Stripe_Subscription__c                                       │
-│  ├─ Stripe_Invoice__c                                            │
-│  ├─ Payment_Transaction__c                                       │
-│  ├─ Pricing_Plan__c & Pricing_Tier__c                            │
-│  └─ Contact (extended with Stripe fields)                        │
+│  ├─ Contact (Stripe Customer ID, MRR, Revenue, Health, Status)  │
+│  ├─ Stripe_Subscription__c (MD to Contact)                       │
+│  ├─ Stripe_Invoice__c (Lookup to Contact & Subscription)         │
+│  ├─ Payment_Transaction__c (MD to Invoice)                       │
+│  └─ Pricing_Plan__c & Pricing_Tier__c                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Model Overview
 
 **Custom Objects**:
-- **Stripe_Customer__c** - Maps Contact to Stripe customer with sync status
-- **Stripe_Subscription__c** - Tracks subscriptions with billing periods and checkout sessions
-- **Stripe_Invoice__c** - Records recurring billing cycles and payment status
-- **Payment_Transaction__c** - Tracks individual payment attempts (success/failure)
-- **Pricing_Plan__c** - Manages subscription pricing plans (Custom Metadata)
+- **Contact** - Extended with Stripe fields (Customer ID, MRR, Total Revenue, Health Score, Churn Risk, Subscription Status)
+- **Stripe_Subscription__c** - Master-Detail to Contact, tracks subscriptions with billing periods and checkout sessions
+- **Stripe_Invoice__c** - Lookup to Contact and Subscription, records recurring billing cycles and payment status
+- **Payment_Transaction__c** - Master-Detail to Invoice, tracks individual payment attempts (success/failure)
+- **Pricing_Plan__c** - Manages subscription pricing plans linked to Subscriptions
 - **Pricing_Tier__c** - Supports tiered/volume pricing (Master-Detail to Pricing_Plan)
 
-**Relationships**: Contact (1) → Stripe_Customer (M) → Stripe_Subscription (M) → Payment_Transaction (M)
+**Relationships**: Contact (1) → Stripe_Subscription (M) → Stripe_Invoice (M) → Payment_Transaction (M)
+
+**Key Change**: Direct Contact-to-Subscription relationship replaces the deprecated Stripe_Customer__c object, simplifying the data model.
 
 See [requirements/technical.md](requirements/technical.md#customer--payment-data-model) for complete data model specification.
 
@@ -435,30 +436,36 @@ salesforce-stripe-payment-processing-mtb/
 │
 ├── force-app/
 │   └── main/default/
-│       ├── classes/                      # Apex classes (33 total)
+│       ├── classes/                      # Apex classes
 │       │   ├── StripeAPIService.cls      # Main Stripe API wrapper
-│       │   ├── StripeCustomerService.cls # Customer sync service
-│       │   ├── StripeSubscriptionService.cls
+│       │   ├── StripeSubscriptionService.cls # Subscription management
 │       │   ├── ContactTriggerHandler.cls
 │       │   ├── ContactTriggerHelper.cls
 │       │   ├── StripeInvoiceTriggerHandler.cls
 │       │   ├── StripeInvoiceTriggerHelper.cls
+│       │   ├── StripeSubscriptionTriggerHandler.cls
 │       │   ├── CustomerHealthScoreBatch.cls
 │       │   ├── InvoiceCollectionBatch.cls
 │       │   ├── RevenueRollupBatch.cls
 │       │   ├── StripeAPIException.cls
-│       │   ├── StripeAuthenticationException.cls
-│       │   └── ... (and 20+ more)
+│       │   ├── StripeCalloutQueueable.cls # Retry mechanism
+│       │   └── ... (and more)
 │       │
 │       ├── objects/                     # Custom objects
-│       │   ├── Stripe_Customer__c/
+│       │   ├── Contact/                # Extended with Stripe fields
+│       │   │   ├── fields/
+│       │   │   │   ├── Stripe_Customer_ID__c
+│       │   │   │   ├── MRR__c
+│       │   │   │   ├── Total_Revenue__c
+│       │   │   │   ├── Health_Score__c
+│       │   │   │   ├── Churn_Risk__c
+│       │   │   │   └── Subscription_Status__c
 │       │   ├── Stripe_Subscription__c/
 │       │   ├── Stripe_Invoice__c/
 │       │   ├── Payment_Transaction__c/
 │       │   ├── Pricing_Plan__c/
 │       │   ├── Pricing_Tier__c/
-│       │   ├── Stripe_Price__mdt/      # Custom metadata type
-│       │   └── Contact/               # Extended with Stripe fields
+│       │   └── Stripe_Price__mdt/      # Custom metadata type
 │       │
 │       ├── triggers/                   # Apex triggers
 │       │   ├── ContactTrigger.trigger
@@ -549,11 +556,12 @@ salesforce-stripe-payment-processing-mtb/
 
 ### Salesforce → Stripe (Outbound Integration)
 
-- **Customer Synchronization**: Contact creation automatically creates Stripe customer via trigger
-- **Subscription Management**: Create Checkout sessions and store secure payment links
-- **Multiple Pricing Plans**: Support for different subscription tiers via Custom Metadata
-- **Error Handling**: Named Credentials with fallback authentication
-- **Logging**: Nebula Logger integration for audit trails
+- **Customer Synchronization**: Contact syncs directly to Stripe with Customer ID stored on Contact record
+- **Subscription Management**: Create Checkout sessions via Stripe Checkout with secure payment links
+- **Multiple Pricing Plans**: Support for different subscription tiers and pricing strategies
+- **Error Handling**: Queueable retry mechanism with exponential backoff for failed callouts
+- **Logging**: Nebula Logger integration for comprehensive audit trails
+- **Revenue Tracking**: Real-time MRR and Total Revenue calculations on Contact records
 
 ### Stripe → Salesforce (Inbound Integration via Middleware)
 
@@ -570,33 +578,45 @@ salesforce-stripe-payment-processing-mtb/
 
 ### Advanced Processing Capabilities
 
+- **3-Lambda Architecture**:
+  - **Lambda 1 (Webhook Receiver)**: Fast webhook verification and routing
+  - **Lambda 2 (SQS Worker)**: Real-time processing via REST API
+  - **Lambda 3 (Bulk Processor)**: Batched processing via Bulk API 2.0
+
 - **Priority-Based Processing**:
-  - High-priority (real-time): Payment failures, subscription cancellations, checkout completions
-  - Low-priority (batched): Customer metadata updates, sent via Bulk API
+  - **High-priority** (< 5s): Payment failures, cancellations, checkout completions → REST API
+  - **Medium-priority** (< 30s): Successful payments, subscriptions → REST API
+  - **Low-priority** (batched): Customer metadata updates → Bulk API 2.0 (90% API call reduction)
+
+- **Dual-Trigger Bulk Processing**:
+  - **SQS Trigger**: Processes batch of 10 messages or wait up to 30s
+  - **EventBridge Trigger**: Scheduled execution every 1 minute ensures timely processing
 
 - **Rate Limiting**:
   - Sliding window algorithm (DynamoDB-based)
-  - Respects Salesforce API governor limits
+  - Respects Salesforce API governor limits (10/sec, 250/min, 15k/day)
   - Dynamic throttling based on remaining quota
 
 - **Retry Mechanisms**:
-  - Exponential backoff: 2s, 4s, 8s, 16s, 32s
-  - Max 5 retry attempts
+  - Exponential backoff with jitter: 2s, 4s, 8s, 16s, 32s
+  - Max 5 retry attempts for main queue, 3 for low-priority
   - Dead letter queue for permanent failures
+  - Native Lambda retry for bulk processor
 
 - **Data Synchronization**:
-  - Idempotency keys prevent duplicate processing
+  - Idempotency keys prevent duplicate processing (7-day TTL)
   - Timestamp-based conflict resolution (last-write-wins)
   - Event ordering and duplicate detection
 
 ### Revenue & Finance Features
 
-- **Invoice Automation**: Trigger-based automation on invoice creation/updates
-- **Revenue Rollups**: Aggregate invoice amounts to customer and subscription records
-- **Health Scoring**: Calculate customer payment health (0-100 scale)
-- **Churn Detection**: Flag customers with high payment failure rates
-- **Dunning Escalation**: Progress payment retry status with escalation
-- **Batch Jobs**: Daily overdue invoice identification, weekly health recalculation
+- **Invoice Automation**: Trigger-based automation on invoice creation/updates with dunning status tracking
+- **Revenue Rollups**: Real-time calculation of MRR and Total Revenue on Contact records
+- **Health Scoring**: Automated customer payment health scoring (0-100 scale) based on payment history
+- **Churn Risk Analysis**: Predictive churn risk assessment based on payment patterns
+- **Dunning Escalation**: Automated dunning status progression (None → Trying → Exhausted)
+- **Subscription Lifecycle**: Automatic status updates (Draft, Active, Past Due, Canceled, Unpaid)
+- **Payment Tracking**: Complete transaction history with status tracking (Succeeded, Failed, Processing, etc.)
 
 ---
 
@@ -608,7 +628,7 @@ salesforce-stripe-payment-processing-mtb/
 |-----------|-----------|---------|
 | **Language** | Apex | Latest |
 | **API Version** | Salesforce REST API | v63.0 |
-| **Custom Objects** | 6 objects + 2 metadata types | - |
+| **Custom Objects** | 5 objects + 2 metadata types | - |
 | **Logging** | Nebula Logger | Latest |
 | **Authentication** | Named Credentials, OAuth 2.0 | - |
 | **Triggers** | Bulk-safe trigger framework | - |
@@ -630,10 +650,11 @@ salesforce-stripe-payment-processing-mtb/
 
 | Service | Purpose |
 |---------|---------|
-| **Lambda** | Serverless webhook handler |
+| **Lambda** | 3 serverless functions (Webhook, Worker, Bulk Processor) |
 | **API Gateway** | HTTP endpoint for webhooks |
-| **SQS** | Event buffering & async processing |
-| **DynamoDB** | Token caching, rate limiting, temp storage |
+| **SQS** | Dual queues for priority-based event routing |
+| **EventBridge** | Scheduled trigger for bulk processor (1 min interval) |
+| **DynamoDB** | Token caching, rate limiting, idempotency, batch accumulation |
 | **Secrets Manager** | Credential storage & rotation |
 | **CloudWatch** | Logging, metrics, monitoring, alarms |
 
@@ -1189,9 +1210,9 @@ fields @message
 
 ### Common Issues
 
-#### 1. **Stripe Customer Not Created**
+#### 1. **Stripe Customer ID Not Set on Contact**
 
-**Symptoms**: Contact created in Salesforce but no Stripe_Customer__c record
+**Symptoms**: Contact created in Salesforce but Stripe_Customer_ID__c field is blank
 
 **Diagnosis**:
 ```bash
@@ -1201,6 +1222,10 @@ sf apex tail --target-org stripe-dev
 # Check Nebula Logger
 # Setup → Nebula Logger → Recent Logs
 # Filter by ContactTriggerHandler
+
+# Query Contact record
+sf data query --query "SELECT Id, Name, Email, Stripe_Customer_ID__c FROM Contact WHERE Email = 'test@example.com'" \
+  --target-org stripe-dev
 ```
 
 **Solutions**:
@@ -1208,6 +1233,7 @@ sf apex tail --target-org stripe-dev
 2. Check Stripe API key is valid (test mode)
 3. Verify contact has required fields (Email, Name)
 4. Check trigger is active: Setup → Triggers → ContactTrigger (Active)
+5. Review queueable retry logs for failed callouts
 
 #### 2. **Webhook Events Not Processed**
 
@@ -1305,8 +1331,12 @@ sf org open --target-org stripe-dev
 # Tail Apex debug logs
 sf apex tail --target-org stripe-dev
 
-# Query Stripe_Customer records
-sf data query --query "SELECT Id, Name, Stripe_Customer_ID__c FROM Stripe_Customer__c" \
+# Query Contact records with Stripe data
+sf data query --query "SELECT Id, Name, Email, Stripe_Customer_ID__c, MRR__c, Total_Revenue__c, Subscription_Status__c FROM Contact WHERE Stripe_Customer_ID__c != null" \
+  --target-org stripe-dev
+
+# Query Subscriptions
+sf data query --query "SELECT Id, Name, Contact__r.Name, Status__c, Sync_Status__c FROM Stripe_Subscription__c" \
   --target-org stripe-dev
 
 # Check trigger execution status
@@ -1362,7 +1392,6 @@ Fixes #123
 ### Communication Channels
 
 - **Slack**: Daily standups, quick questions
-- **GitHub Issues**: Feature requests, bug tracking
 - **Pull Requests**: Code review discussions
 - **Meetings**: Weekly architecture review, bi-weekly demos
 
@@ -1372,15 +1401,6 @@ Fixes #123
 - **Class Documentation**: JSDoc style for Apex, docstrings for Python
 - **README**: Keep updated with setup changes
 - **Architecture Docs**: PlantUML diagrams in `diagrams/` folder
-
-### Key Team Roles
-
-| Role | Responsibilities |
-|------|-----------------|
-| **Lead Developer** | Architecture decisions, code reviews, deployment |
-| **Salesforce Dev** | Apex classes, triggers, data model |
-| **Middleware Dev** | FastAPI services, AWS infrastructure |
-| **QA Engineer** | Testing strategy, test cases, coverage |
 
 ---
 
@@ -1405,20 +1425,6 @@ All diagrams are in `diagrams/` folder:
 - `middleware-architecture-final.puml` - System architecture
 - `onboarding.puml` - Customer onboarding flow
 - `webhook-flow.puml` - Webhook processing flow
-
----
-
-## 📝 License & Credits
-
-This is an educational capstone project created for Cloud Code Academy.
-
-**Team Members**: [Add your team members here]
-
-**Project Duration**: 4 weeks (Week 1-4 completed)
-
-**Last Updated**: November 2, 2024
-
----
 
 ## 🤝 Contributing
 
