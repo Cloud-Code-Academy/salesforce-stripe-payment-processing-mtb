@@ -207,11 +207,11 @@ public with sharing class PricingPlanTriggerHelper {
             List<Pricing_Plan__c> pricingPlansForProcess = new List<Pricing_Plan__c>();
 
             // Identify pricing plans that need Stripe price creation
+            Set<Id> pricingPlanIds = new Set<Id>();
             for (Pricing_Plan__c pricingPlan : newList) {
                 try {
-                    if (String.isBlank(pricingPlan.Stripe_Price_ID__c)
-                        && !String.isBlank(pricingPlan.ProductName__c)) {
-                        pricingPlansForProcess.add(pricingPlan);
+                    if (String.isBlank(pricingPlan.Stripe_Price_ID__c)) {
+                        pricingPlanIds.add(pricingPlan.Id);
                     }
                 } catch (Exception ex) {
                     // Log individual record processing error but continue with other records
@@ -222,52 +222,66 @@ public with sharing class PricingPlanTriggerHelper {
                 }
             }
 
-            // Make callout for each Pricing_Plan__c to create Price object in Stripe
+            // Query the pricing plans with required fields
+            if (!pricingPlanIds.isEmpty()) {
+                pricingPlansForProcess = [SELECT Id, Currency__c, Recurrency_Type__c, Amount__c, Stripe_Price_ID__c,
+                                                 Stripe_Subscription__r.Product_Plan_Name__c
+                                         FROM Pricing_Plan__c
+                                         WHERE Id IN :pricingPlanIds];
+            }
+
+            // Enqueue a single batch job for all pricing plans instead of one per record
             if (!pricingPlansForProcess.isEmpty()) {
-                Integer successCount = 0;
+                // Pre-validate all records before enqueueing
+                List<Pricing_Plan__c> validPlansForProcessing = new List<Pricing_Plan__c>();
                 Integer failureCount = 0;
 
                 for (Pricing_Plan__c pricingPlan : pricingPlansForProcess) {
                     try {
-                        // Validate required fields before creating queueable
+                        // Validate required fields before adding to batch
                         if (pricingPlan.Currency__c == null || pricingPlan.Recurrency_Type__c == null
                             || pricingPlan.Amount__c == null) {
                             throw new IllegalArgumentException('Missing required fields for Stripe Price creation');
                         }
-
-                        StripeCalloutQueueable callout = new StripeCalloutQueueable(
-                            pricingPlan.Id,
-                            pricingPlan.Currency__c,
-                            pricingPlan.Recurrency_Type__c.toString().replace('ily','y').replace('ly',''),
-                            pricingPlan.Amount__c,
-                            pricingPlan.ProductName__c
-                        );
-
-                        if (!Test.isRunningTest()) {
-                            System.enqueueJob(callout);
+                        // Only process if we have a product name (from related subscription)
+                        if (pricingPlan.Stripe_Subscription__r != null &&
+                            !String.isBlank(pricingPlan.Stripe_Subscription__r.Product_Plan_Name__c)) {
+                            validPlansForProcessing.add(pricingPlan);
                         }
-                        successCount++;
-                    } catch (AsyncException asyncEx) {
-                        // Handle queueable-specific errors (e.g., too many jobs)
-                        failureCount++;
-                        Logger.error('Failed to enqueue Stripe callout for Pricing Plan: ' + pricingPlan.Id, asyncEx)
-                            .setMessage('AsyncException: ' + asyncEx.getMessage())
-                            .addTag('PricingPlanTriggerHelper')
-                            .addTag('Queueable-Error');
-                        Logger.saveLog();
                     } catch (Exception ex) {
-                        // Handle other errors
+                        // Log validation errors but continue with valid records
                         failureCount++;
                         Logger.error('Failed to process Pricing Plan: ' + pricingPlan.Id, ex)
                             .setMessage('Error details: ' + ex.getMessage())
                             .addTag('PricingPlanTriggerHelper')
-                            .addTag('Processing-Error');
+                            .addTag('Validation-Error');
+                        Logger.saveLog();
+                    }
+                }
+
+                // Enqueue batch job if we have valid plans
+                if (!validPlansForProcessing.isEmpty()) {
+                    try {
+                        StripeCalloutQueueable callout = new StripeCalloutQueueable(validPlansForProcessing);
+                        if (!Test.isRunningTest()) {
+                            System.enqueueJob(callout);
+                            Logger.info('Enqueued batch job for ' + validPlansForProcessing.size() + ' pricing plans')
+                                .addTag('PricingPlanTriggerHelper')
+                                .addTag('Batch-Processing');
+                            Logger.saveLog();
+                        }
+                    } catch (AsyncException asyncEx) {
+                        // Handle queueable-specific errors (e.g., too many jobs)
+                        Logger.error('Failed to enqueue Stripe batch callout', asyncEx)
+                            .setMessage('AsyncException: ' + asyncEx.getMessage())
+                            .addTag('PricingPlanTriggerHelper')
+                            .addTag('Queueable-Error');
                         Logger.saveLog();
                     }
                 }
 
                 // Log summary
-                Logger.info('Processed ' + pricingPlansForProcess.size() + ' Pricing Plans. Success: ' + successCount + ', Failures: ' + failureCount)
+                Logger.info('Processed ' + pricingPlansForProcess.size() + ' Pricing Plans. Valid for processing: ' + validPlansForProcessing.size() + ', Validation failures: ' + failureCount)
                     .addTag('PricingPlanTriggerHelper')
                     .addTag('Processing-Summary');
                 Logger.saveLog();
