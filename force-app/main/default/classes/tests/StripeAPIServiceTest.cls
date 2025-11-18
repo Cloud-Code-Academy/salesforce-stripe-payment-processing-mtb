@@ -278,7 +278,7 @@ private class StripeAPIServiceTest {
             );
             insert subscription;
             Pricing_Plan__c pricePlan = new Pricing_Plan__c(
-                Stripe_Subscription__c = subscription.Id,
+                ProductName__c = 'Orange',
                 Currency__c = 'usd',
                 Recurrency_Type__c = 'week',
                 Amount__c = 24

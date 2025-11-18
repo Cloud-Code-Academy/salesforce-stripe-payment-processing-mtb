@@ -122,7 +122,7 @@ public class StripeChainedCalloutQueueableTest {
 
             // Create Pricing Plan without Stripe_Price_ID__c
             Pricing_Plan__c pricePlan = new Pricing_Plan__c(
-                Stripe_Subscription__c = subscription.Id,
+                ProductName__c = 'Test Product',
                 Currency__c = 'usd',
                 Recurrency_Type__c = 'month',
                 Amount__c = 1000

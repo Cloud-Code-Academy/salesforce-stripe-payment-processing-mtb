@@ -214,6 +214,33 @@ class StripeService:
                 details={"subscription_id": subscription_id, "error": str(e)},
             ) from e
 
+    async def get_product(self, product_id: str) -> dict:
+        """
+        Retrieve product from Stripe API.
+
+        Args:
+            product_id: Stripe product ID
+
+        Returns:
+            Product object with name and metadata
+
+        Raises:
+            StripeException: If retrieval fails
+        """
+        try:
+            product = stripe.Product.retrieve(product_id)
+            logger.info(
+                f"Retrieved product from Stripe",
+                extra={"product_id": product_id, "product_name": product.get("name")},
+            )
+            return product
+        except stripe.error.StripeError as e:
+            logger.error(f"Failed to retrieve product {product_id}: {e}")
+            raise StripeException(
+                f"Failed to retrieve product",
+                details={"product_id": product_id, "error": str(e)},
+            ) from e
+
 
 # Global Stripe service instance
 stripe_service = StripeService()

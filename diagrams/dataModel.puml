@@ -23,13 +23,14 @@ package Salesforce {
     class Stripe_Subscription__c {
         - StripeSubscriptionID: String (External ID)
         - Contact: MasterDetail
+        - PricingPlan: Lookup
         - StripeCustomerId: Formula
         - Status: Picklist
         - CurrentPeriodStart: DateTime
         - CurrentPeriodEnd: DateTime
         - Amount: Currency
         - Currency: String
-        - StripePriceID: String
+        - Quantity: Number
         - ProductPlanName: String
         - CheckoutSessionID: String
         - CheckoutURL: String
@@ -69,7 +70,6 @@ package Salesforce {
 
     class Pricing_Plan__c {
         - StripePriceID: String (External ID)
-        - StripeSubscription: Lookup
         - Amount: Currency
         - Currency: String
         - RecurrencyType: Picklist
@@ -145,7 +145,7 @@ Invoice "1" -- "0..1" Stripe_Invoice__c : syncs to
 Contact "1" *-- "0..*" Stripe_Subscription__c : has (MD)
 Contact "1" --> "0..*" Stripe_Invoice__c : has (Lookup)
 Stripe_Subscription__c "1" --> "0..*" Stripe_Invoice__c : generates (Lookup)
-Stripe_Subscription__c "1" --> "0..*" Pricing_Plan__c : uses (Lookup)
+Stripe_Subscription__c "1" --> "0..1" Pricing_Plan__c : uses (Lookup)
 Stripe_Invoice__c "1" *-- "0..*" Payment_Transaction__c : paid by (MD)
 Stripe_Invoice__c "1" --> "1" DunningStatus : has
 Stripe_Subscription__c "1" --> "1" SubscriptionStatus : has

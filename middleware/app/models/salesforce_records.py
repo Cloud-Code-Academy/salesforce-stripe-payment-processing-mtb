@@ -38,8 +38,9 @@ class SalesforceSubscription(BaseModel):
     Contact__c: Optional[str] = Field(
         None, description="Lookup to Contact (Contact.Id)"
     )
-    PricingPlans__c: Optional[str] = None
-    Stripe_Price_ID__c: Optional[str] = None
+    Pricing_Plan__c: Optional[str] = Field(
+        None, description="Lookup to Pricing_Plan__c"
+    )
     Status__c: Optional[
         Literal[
             "active",
@@ -55,6 +56,8 @@ class SalesforceSubscription(BaseModel):
     Current_Period_End__c: Optional[datetime] = None
     Amount__c: Optional[float] = None
     Currency__c: Optional[str] = None
+    Quantity__c: Optional[int] = Field(None, description="Quantity of the subscription")
+    Product_Plan_Name__c: Optional[str] = None
     Stripe_Checkout_Session_ID__c: Optional[str] = None
     Checkout_URL__c: Optional[str] = None
     Sync_Status__c: Optional[Literal["Pending", "Checkout Created", "Completed", "Failed"]] = (
@@ -214,3 +217,75 @@ class SalesforceError(BaseModel):
     message: str
     errorCode: str
     fields: list[str] = Field(default_factory=list)
+
+
+class SalesforcePricingPlan(BaseModel):
+    """Salesforce Pricing_Plan__c record"""
+
+    Stripe_Price_ID__c: str = Field(
+        description="External ID - Stripe price ID"
+    )
+    ProductName__c: Optional[str] = Field(
+        None, description="Name of the product from Stripe"
+    )
+    Amount__c: Optional[float] = Field(
+        None, description="Price amount in the currency's standard unit"
+    )
+    Currency__c: Optional[str] = Field(
+        None, description="Three-letter ISO currency code"
+    )
+    Recurrency_Type__c: Optional[
+        Literal[
+            "Daily",
+            "Weekly",
+            "Monthly",
+            "Quarterly",
+            "Yearly"
+        ]
+    ] = Field(None, description="Billing frequency")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Stripe_Price_ID__c": "price_ABC123",
+                "ProductName__c": "Premium Plan",
+                "Amount__c": 29.99,
+                "Currency__c": "USD",
+                "Recurrency_Type__c": "Monthly"
+            }
+        }
+
+
+class SalesforcePricingTier(BaseModel):
+    """Salesforce Pricing_Tier__c record"""
+
+    Pricing_Plan__c: str = Field(
+        description="Master-Detail relationship to Pricing_Plan__c (Salesforce ID)"
+    )
+    Tier_Number__c: Optional[int] = Field(
+        None, description="Tier sequence number"
+    )
+    From_Quantity__c: Optional[int] = Field(
+        None, description="Starting quantity for this tier"
+    )
+    To_Quantity__c: Optional[int] = Field(
+        None, description="Ending quantity for this tier (null means infinity)"
+    )
+    Unit_Price__c: Optional[float] = Field(
+        None, description="Per-unit price in this tier"
+    )
+    Discount__c: Optional[float] = Field(
+        None, description="Discount amount for this tier"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Pricing_Plan__c": "a0B1700000ABC123",
+                "Tier_Number__c": 1,
+                "From_Quantity__c": 0,
+                "To_Quantity__c": 10,
+                "Unit_Price__c": 10.00,
+                "Discount__c": 0.00
+            }
+        }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Quantity__c</fullName>
+    <defaultValue>1</defaultValue>
+    <description>The quantity of the subscribed item (e.g., number of seats, licenses, or units)</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Number of units for this subscription (defaults to 1)</inlineHelpText>
+    <label>Quantity</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackHistory>true</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

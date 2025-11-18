@@ -52,7 +52,7 @@
         <layoutColumns>
             <layoutItems>
                 <behavior>Edit</behavior>
-                <field>Stripe_Price_ID__c</field>
+                <field>Pricing_Plan__c</field>
             </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>
@@ -65,6 +65,10 @@
             <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Currency__c</field>
+            </layoutItems>
+            <layoutItems>
+                <behavior>Edit</behavior>
+                <field>Quantity__c</field>
             </layoutItems>
         </layoutColumns>
         <layoutColumns>
@@ -115,10 +119,6 @@
         <fields>CORE.USERS.FULL_NAME</fields>
         <fields>TASK.LAST_UPDATE</fields>
         <relatedList>RelatedHistoryList</relatedList>
-    </relatedLists>
-    <relatedLists>
-        <fields>NAME</fields>
-        <relatedList>Pricing_Plan__c.Stripe_Subscription__c</relatedList>
     </relatedLists>
     <showEmailCheckbox>false</showEmailCheckbox>
     <showHighlightsPanel>false</showHighlightsPanel>
