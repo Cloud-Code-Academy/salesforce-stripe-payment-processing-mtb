@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Queue xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Receives automated notifications for failed Stripe payments and exhausted dunning attempts. Handles payment failure follow-up tasks and urgent customer payment issues.</description>
+    <doesSendEmailToMembers>true</doesSendEmailToMembers>
+    <name>Finance Team</name>
+    <queueSobject>
+        <sobjectType>Task</sobjectType>
+    </queueSobject>
+</Queue>

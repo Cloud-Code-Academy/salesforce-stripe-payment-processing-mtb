@@ -4,5 +4,6 @@ public with sharing class StripeSubscriptionTriggerHandler {
         // Removed: processStripeSubscriptionToCreateSession - no longer needed as checkout session is created directly
         // The checkout session will create the subscription in Stripe, avoiding duplicate subscriptions
         StripeSubscriptionTriggerHelper.createPricingPlansUponSelection(newList, oldMap);
+        StripeSubscriptionTriggerHelper.calculateMRR_OfStripeCustomer(newList, oldMap);
     }
 }
