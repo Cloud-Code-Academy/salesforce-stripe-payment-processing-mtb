@@ -4,7 +4,7 @@ Subscription Event Handler
 Handles Stripe subscription-related webhook events.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from app.models.stripe_events import StripeEvent
@@ -38,7 +38,7 @@ class SubscriptionHandler:
             session_data = event.event_object
 
         logger.info(
-            f"Processing checkout.session.completed event",
+            "Processing checkout.session.completed event",
             extra={
                 "event_id": event_id,
                 "session_id": session_data.get("id"),
@@ -126,7 +126,7 @@ class SubscriptionHandler:
                 update_data["Status__c"] = "unpaid"
 
             logger.info(
-                f"Updating Salesforce subscription with Stripe subscription ID",
+                "Updating Salesforce subscription with Stripe subscription ID",
                 extra={
                     "salesforce_subscription_id": salesforce_record_id,
                     "stripe_subscription_id": subscription_id,
@@ -158,7 +158,7 @@ class SubscriptionHandler:
             result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
         logger.info(
-            f"Checkout session completed - subscription updated",
+            "Checkout session completed - subscription updated",
             extra={
                 "subscription_id": subscription_id,
                 "session_id": session_id,
@@ -170,7 +170,7 @@ class SubscriptionHandler:
             "subscription_id": subscription_id,
             "session_id": session_id,
             "salesforce_result": result,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def handle_checkout_expired(self, event: StripeEvent) -> Dict[str, Any]:
@@ -193,7 +193,7 @@ class SubscriptionHandler:
             session_data = event.event_object
 
         logger.warning(
-            f"Processing checkout.session.expired event",
+            "Processing checkout.session.expired event",
             extra={
                 "event_id": event_id,
                 "session_id": session_data.get("id"),
@@ -217,7 +217,7 @@ class SubscriptionHandler:
         result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
         logger.warning(
-            f"Checkout session expired - subscription marked as failed",
+            "Checkout session expired - subscription marked as failed",
             extra={
                 "subscription_id": subscription_id,
                 "session_id": session_data.get("id"),
@@ -229,7 +229,7 @@ class SubscriptionHandler:
             "session_id": session_data.get("id"),
             "status": "expired",
             "salesforce_result": result,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def handle_subscription_created(self, event: StripeEvent) -> Dict[str, Any]:
@@ -251,7 +251,7 @@ class SubscriptionHandler:
             subscription_data = event.event_object
 
         logger.info(
-            f"Processing customer.subscription.created event",
+            "Processing customer.subscription.created event",
             extra={
                 "event_id": event_id,
                 "subscription_id": subscription_data.get("id"),
@@ -307,7 +307,7 @@ class SubscriptionHandler:
             if result.get("records"):
                 existing_subscription_id = result["records"][0]["Id"]
                 logger.info(
-                    f"Found existing subscription by Stripe ID - will update instead of create",
+                    "Found existing subscription by Stripe ID - will update instead of create",
                     extra={
                         "stripe_subscription_id": stripe_subscription_id,
                         "salesforce_subscription_id": existing_subscription_id
@@ -329,7 +329,7 @@ class SubscriptionHandler:
                     if result.get("records"):
                         existing_subscription_id = result["records"][0]["Id"]
                         logger.info(
-                            f"Found Salesforce-initiated subscription awaiting Stripe sync - will update instead of create",
+                            "Found Salesforce-initiated subscription awaiting Stripe sync - will update instead of create",
                             extra={
                                 "stripe_subscription_id": stripe_subscription_id,
                                 "salesforce_subscription_id": existing_subscription_id,
@@ -361,7 +361,7 @@ class SubscriptionHandler:
             update_data = {k: v for k, v in update_data.items() if v is not None}
 
             logger.info(
-                f"Updating existing subscription with Stripe data",
+                "Updating existing subscription with Stripe data",
                 extra={
                     "stripe_subscription_id": stripe_subscription_id,
                     "salesforce_subscription_id": existing_subscription_id,
@@ -376,7 +376,7 @@ class SubscriptionHandler:
             )
 
             logger.info(
-                f"Subscription updated in Salesforce (prevented duplicate)",
+                "Subscription updated in Salesforce (prevented duplicate)",
                 extra={
                     "stripe_subscription_id": stripe_subscription_id,
                     "salesforce_subscription_id": existing_subscription_id
@@ -404,7 +404,7 @@ class SubscriptionHandler:
             )
 
             logger.info(
-                f"Creating new subscription in Salesforce",
+                "Creating new subscription in Salesforce",
                 extra={
                     "stripe_subscription_id": stripe_subscription_id,
                     "contact_id": salesforce_customer_id
@@ -414,7 +414,7 @@ class SubscriptionHandler:
             result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
             logger.info(
-                f"Subscription created in Salesforce",
+                "Subscription created in Salesforce",
                 extra={
                     "stripe_subscription_id": stripe_subscription_id,
                     "salesforce_result": result
@@ -424,7 +424,7 @@ class SubscriptionHandler:
         return {
             "subscription_id": subscription_data["id"],
             "salesforce_result": result,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def handle_subscription_updated(self, event: StripeEvent) -> Dict[str, Any]:
@@ -446,7 +446,7 @@ class SubscriptionHandler:
             subscription_data = event.event_object
 
         logger.info(
-            f"Processing customer.subscription.updated event",
+            "Processing customer.subscription.updated event",
             extra={
                 "event_id": event_id,
                 "subscription_id": subscription_data.get("id"),
@@ -505,7 +505,7 @@ class SubscriptionHandler:
         result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
         logger.info(
-            f"Subscription updated in Salesforce",
+            "Subscription updated in Salesforce",
             extra={
                 "subscription_id": subscription_data["id"],
                 "status": subscription_data.get("status"),
@@ -516,7 +516,7 @@ class SubscriptionHandler:
             "subscription_id": subscription_data["id"],
             "status": subscription_data.get("status"),
             "salesforce_result": result,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def handle_subscription_deleted(self, event: StripeEvent) -> Dict[str, Any]:
@@ -538,7 +538,7 @@ class SubscriptionHandler:
             subscription_data = event.event_object
 
         logger.info(
-            f"Processing customer.subscription.deleted event",
+            "Processing customer.subscription.deleted event",
             extra={
                 "event_id": event_id,
                 "subscription_id": subscription_data.get("id"),
@@ -554,7 +554,7 @@ class SubscriptionHandler:
         result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
         logger.info(
-            f"Subscription deleted/canceled in Salesforce",
+            "Subscription deleted/canceled in Salesforce",
             extra={"subscription_id": subscription_data["id"]},
         )
 
@@ -562,7 +562,7 @@ class SubscriptionHandler:
             "subscription_id": subscription_data["id"],
             "status": "canceled",
             "salesforce_result": result,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
 
