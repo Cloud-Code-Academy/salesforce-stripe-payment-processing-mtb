@@ -8,6 +8,8 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
     public static final String CREATE_PRODUCT = 'create_product';
     public static final String CREATE_SUBSCRIPTION = 'create_subscription';
     public static final String CREATE_SESSION = 'create_session';
+    public static final String BATCH_CREATE_CUSTOMER = 'batch_create_customer';
+    public static final String BATCH_CREATE_SESSION = 'batch_create_session';
 
     private String calloutType;
     private Id recordId;
@@ -21,6 +23,11 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
     private StripeWrapper.CustomerWrapper customerWrapper;
     private StripeWrapper.ProductWrapper productWrapper;
     private Integer retryCount;
+
+    // New fields for batch processing
+    private List<Contact> contactBatch;
+    private List<Stripe_Subscription__c> subscriptionBatch;
+    private Map<Id, Pricing_Plan__c> pricingPlanMap;
     /**
      * @description Constructor for customer creation callouts. Initializes the queueable job to create a Stripe customer
      *              using the provided contact information.
@@ -175,6 +182,29 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
         this.recordId = recordId;
         this.retryCount = retryCount;
     }
+
+    /**
+     * @description Constructor for batch customer creation. Processes multiple Contact records in a single queueable job.
+     * @param contacts List of Contact records to process for Stripe customer creation
+     */
+    public StripeCalloutQueueable(List<Contact> contacts) {
+        this.calloutType = BATCH_CREATE_CUSTOMER;
+        this.contactBatch = contacts;
+        this.retryCount = 0;
+    }
+
+    /**
+     * @description Constructor for batch checkout session creation. Processes multiple Stripe_Subscription__c records in a single queueable job.
+     * @param subscriptions List of Stripe_Subscription__c records to process
+     * @param pricingPlans Map of Pricing_Plan__c records keyed by Id for price lookups
+     */
+    public StripeCalloutQueueable(List<Stripe_Subscription__c> subscriptions, Map<Id, Pricing_Plan__c> pricingPlans) {
+        this.calloutType = BATCH_CREATE_SESSION;
+        this.subscriptionBatch = subscriptions;
+        this.pricingPlanMap = pricingPlans;
+        this.retryCount = 0;
+    }
+
     /**
      * @description Executes the queueable job based on the callout type. Routes to the appropriate Stripe API operation
      *              (customer, product/price, subscription, or checkout session creation) and handles subsequent record
@@ -230,6 +260,74 @@ public class StripeCalloutQueueable implements Queueable, Database.AllowsCallout
                 handleRetryableException(ex, 'Failed to create checkout session');
             } catch (Exception ex) {
                 Logger.error('Failed to get subscriptionId/update Stripe Subscription record: ', ex);
+                Logger.saveLog();
+            }
+        } else if (calloutType == BATCH_CREATE_CUSTOMER) {
+            processBatchCustomers();
+        } else if (calloutType == BATCH_CREATE_SESSION) {
+            processBatchSessions();
+        }
+    }
+
+    /**
+     * @description Processes a batch of Contact records to create Stripe customers.
+     *              Each record is processed individually with error handling.
+     */
+    private void processBatchCustomers() {
+        if (contactBatch == null || contactBatch.isEmpty()) {
+            return;
+        }
+
+        for (Contact contact : contactBatch) {
+            try {
+                StripeWrapper.CustomerWrapper wrapper = new StripeWrapper.CustomerWrapper(
+                    contact.FirstName + ' ' + contact.LastName,
+                    contact.Email,
+                    contact.Phone
+                );
+                String customerId = StripeAPIService.createCustomer(wrapper);
+                updateStripeCustomer(contact.Id, customerId);
+
+                // Chain payment method creation if needed
+                if (customerId != null && !Test.isRunningTest()) {
+                    System.enqueueJob(new StripeChainedCalloutQueueable(customerId, contact.Id));
+                }
+            } catch (Exception ex) {
+                Logger.error('Failed to create customer for Contact Id: ' + contact.Id, ex);
+                Logger.saveLog();
+            }
+        }
+    }
+
+    /**
+     * @description Processes a batch of Stripe_Subscription__c records to create checkout sessions.
+     *              Each record is processed individually with error handling.
+     */
+    private void processBatchSessions() {
+        if (subscriptionBatch == null || subscriptionBatch.isEmpty()) {
+            return;
+        }
+
+        for (Stripe_Subscription__c subscription : subscriptionBatch) {
+            try {
+                // Get the pricing plan for this subscription
+                Pricing_Plan__c pricingPlan = pricingPlanMap != null
+                    ? pricingPlanMap.get(subscription.Pricing_Plan__c)
+                    : null;
+
+                if (pricingPlan == null || String.isBlank(pricingPlan.Stripe_Price_ID__c)) {
+                    Logger.error('Missing pricing plan or Stripe Price ID for subscription: ' + subscription.Id);
+                    Logger.saveLog();
+                    continue;
+                }
+
+                StripeWrapper stripeResponse = StripeAPIService.createSession(
+                    subscription.StripeCustomerId__c,
+                    pricingPlan.Stripe_Price_ID__c
+                );
+                updateStripeSubscriptionWithSessionData(subscription.Id, stripeResponse);
+            } catch (Exception ex) {
+                Logger.error('Failed to create checkout session for Stripe Subscription Id: ' + subscription.Id, ex);
                 Logger.saveLog();
             }
         }

@@ -242,7 +242,8 @@ public class StripeSubscriptionTriggerHelperTest {
                 Stripe_Price_ID__c = 'price_test123',
                 ProductName__c = 'Test Product',
                 Amount__c = 100,
-                Currency__c = 'usd'
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
             );
             insert pricingPlan;
 
@@ -285,7 +286,8 @@ public class StripeSubscriptionTriggerHelperTest {
                 Stripe_Price_ID__c = 'price_test123',
                 ProductName__c = 'Test Product',
                 Amount__c = 100,
-                Currency__c = 'usd'
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
             );
             insert pricingPlan;
 
@@ -348,7 +350,8 @@ public class StripeSubscriptionTriggerHelperTest {
                 Stripe_Price_ID__c = 'price_test123',
                 ProductName__c = 'Test Product',
                 Amount__c = 100,
-                Currency__c = 'usd'
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
             );
             insert pricingPlan;
 
@@ -401,7 +404,8 @@ public class StripeSubscriptionTriggerHelperTest {
                     Stripe_Price_ID__c = 'price_bulk' + i,
                     ProductName__c = 'Bulk Product ' + i,
                     Amount__c = 100 * (i + 1),
-                    Currency__c = 'usd'
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month'
                 ));
             }
             insert pricingPlans;

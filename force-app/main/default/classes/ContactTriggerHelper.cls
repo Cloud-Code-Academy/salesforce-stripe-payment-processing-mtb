@@ -20,21 +20,19 @@ public with sharing class ContactTriggerHelper {
                     stripeCustomersForProcess.add(customer);
                 }
             }
-            // Loop through each Customer
-            for (Contact filteredCustomer : stripeCustomersForProcess) {
-                // Enqueue the callout
+            // Enqueue a single batch job for all customers instead of one per customer
+            if (!stripeCustomersForProcess.isEmpty()) {
                 try {
-                    StripeCalloutQueueable callout = new StripeCalloutQueueable(
-                        filteredCustomer.Id,
-                        filteredCustomer.FirstName + ' ' + filteredCustomer.LastName,
-                        filteredCustomer.Email,
-                        filteredCustomer.Phone
-                    );
+                    StripeCalloutQueueable callout = new StripeCalloutQueueable(stripeCustomersForProcess);
                     if (!Test.isRunningTest()) {
                         System.enqueueJob(callout);
+                        Logger.info('Enqueued batch job for ' + stripeCustomersForProcess.size() + ' customers')
+                            .addTag('ContactTriggerHelper')
+                            .addTag('Batch-Processing');
+                        Logger.saveLog();
                     }
                 } catch (Exception ex) {
-                    Logger.error('Failed to make callout: ', ex);
+                    Logger.error('Failed to enqueue batch callout: ', ex);
                     Logger.saveLog();
                 }
             }

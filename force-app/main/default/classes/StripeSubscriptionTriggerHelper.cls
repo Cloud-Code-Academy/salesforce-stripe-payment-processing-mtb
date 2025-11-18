@@ -71,22 +71,21 @@ public with sharing class StripeSubscriptionTriggerHelper {
         }
 
         if (!subscriptionsForProcess.isEmpty()) {
-            for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
-                try {
-                    Pricing_Plan__c pricingPlan = pricingPlanMap.get(subscriptionRec.Pricing_Plan__c);
-                    // Create checkout session directly - this will create the subscription in Stripe
-                    StripeCalloutQueueable callout = new StripeCalloutQueueable(
-                        subscriptionRec.StripeCustomerId__c,
-                        pricingPlan.Stripe_Price_ID__c,
-                        subscriptionRec.Id
-                    );
-                    if (!Test.isRunningTest()) {
-                        System.enqueueJob(callout);
-                    }
-                } catch (Exception ex) {
-                    Logger.error('Failed to enqueue checkout session callout for subscription: ' + subscriptionRec.Id, ex);
+            try {
+                // Enqueue a single batch job for all subscriptions instead of one per record
+                StripeCalloutQueueable callout = new StripeCalloutQueueable(subscriptionsForProcess, pricingPlanMap);
+                if (!Test.isRunningTest()) {
+                    System.enqueueJob(callout);
+                    Logger.info('Enqueued batch job for ' + subscriptionsForProcess.size() + ' subscription checkout sessions')
+                        .addTag('StripeSubscriptionTriggerHelper')
+                        .addTag('Batch-Processing');
                     Logger.saveLog();
-                    // Track failed subscriptions for status update
+                }
+            } catch (Exception ex) {
+                Logger.error('Failed to enqueue batch checkout session callout', ex);
+                Logger.saveLog();
+                // Mark all subscriptions as failed
+                for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
                     subscriptionRec.Sync_Status__c = STATUS_FAILED;
                     subscriptionsForUpdate.add(subscriptionRec);
                 }
@@ -164,21 +163,21 @@ public with sharing class StripeSubscriptionTriggerHelper {
         }
 
         if (!subscriptionsForProcess.isEmpty()) {
-            for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
-                try {
-                    Pricing_Plan__c pricingPlan = pricingPlanMap.get(subscriptionRec.Pricing_Plan__c);
-                    StripeCalloutQueueable callout = new StripeCalloutQueueable(
-                        subscriptionRec.StripeCustomerId__c,
-                        pricingPlan.Stripe_Price_ID__c,
-                        subscriptionRec.Id
-                    );
-                    if (!Test.isRunningTest()) {
-                        System.enqueueJob(callout);
-                    }
-                } catch (Exception ex) {
-                    Logger.error('Failed to enqueue checkout session callout for subscription: ' + subscriptionRec.Id, ex);
+            try {
+                // Enqueue a single batch job for all subscriptions instead of one per record
+                StripeCalloutQueueable callout = new StripeCalloutQueueable(subscriptionsForProcess, pricingPlanMap);
+                if (!Test.isRunningTest()) {
+                    System.enqueueJob(callout);
+                    Logger.info('Enqueued batch job for ' + subscriptionsForProcess.size() + ' subscriptions to create checkout sessions')
+                        .addTag('StripeSubscriptionTriggerHelper')
+                        .addTag('Batch-Processing');
                     Logger.saveLog();
-                    // Track failed subscriptions for status update
+                }
+            } catch (Exception ex) {
+                Logger.error('Failed to enqueue batch checkout session callout', ex);
+                Logger.saveLog();
+                // Mark all subscriptions as failed
+                for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
                     subscriptionRec.Sync_Status__c = STATUS_FAILED;
                     subscriptionsForUpdate.add(subscriptionRec);
                 }
