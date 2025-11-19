@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # Stripe
     stripe_api_key: Optional[str] = Field(default=None, description="Stripe secret API key")
     stripe_webhook_secret: Optional[str] = Field(default=None, description="Stripe webhook signing secret")
-    stripe_api_version: str = Field(default="2024-10-28")
+    stripe_api_version: str = Field(default="2024-06-20")
 
     # Salesforce OAuth
     salesforce_client_id: Optional[str] = Field(default=None, description="Salesforce Connected App Client ID")

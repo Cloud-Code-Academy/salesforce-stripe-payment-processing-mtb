@@ -87,11 +87,6 @@ class PaymentHandler:
             else datetime.now(timezone.utc),
         )
 
-        # Check if payment is associated with a subscription
-        metadata = payment_intent.get("metadata", {})
-        if "subscription_id" in metadata:
-            salesforce_transaction.Stripe_Subscription__c = metadata["subscription_id"]
-
         # Check if payment is associated with an invoice
         # Note: Stripe_Invoice__c is a required Master-Detail field on Payment_Transaction__c
         # so we can only create transactions that have an associated invoice
@@ -194,11 +189,6 @@ class PaymentHandler:
             if payment_intent.get("created")
             else datetime.now(timezone.utc),
         )
-
-        # Check if payment is associated with a subscription
-        metadata = payment_intent.get("metadata", {})
-        if "subscription_id" in metadata:
-            salesforce_transaction.Stripe_Subscription__c = metadata["subscription_id"]
 
         # Check if payment is associated with an invoice
         stripe_invoice_id = payment_intent.get("invoice")
@@ -779,10 +769,6 @@ class PaymentHandler:
             "Transaction_Type__c": "recurring_payment"
         }
 
-        # Link to subscription if found
-        if subscription_sf_id:
-            transaction_data["Stripe_Subscription__c"] = subscription_sf_id
-
         # Link to invoice if available
         if invoice_sf_id:
             transaction_data["Stripe_Invoice__c"] = invoice_sf_id
@@ -979,10 +965,6 @@ class PaymentHandler:
             "Transaction_Date__c": datetime.now().isoformat(),
             "Transaction_Type__c": "recurring_payment"
         }
-
-        # Add optional subscription link
-        if subscription_sf_id:
-            transaction_record_data["Stripe_Subscription__c"] = subscription_sf_id
 
         # Remove None values
         transaction_record_data = {k: v for k, v in transaction_record_data.items() if v is not None}
@@ -1206,10 +1188,6 @@ class PaymentHandler:
                 "Transaction_Type__c": "recurring_payment",
                 "Failure_Reason__c": invoice_data.get("failure_message")
             }
-
-            # Add optional subscription link
-            if subscription_sf_id:
-                transaction_record_data["Stripe_Subscription__c"] = subscription_sf_id
 
             # Remove None values
             transaction_record_data = {k: v for k, v in transaction_record_data.items() if v is not None}
@@ -1526,10 +1504,6 @@ class PaymentHandler:
             "Transaction_Type__c": "recurring_payment",
             "Failure_Reason__c": invoice_data["failure_message"]
         }
-
-        # Link to subscription if found
-        if subscription_sf_id:
-            transaction_data["Stripe_Subscription__c"] = subscription_sf_id
 
         # Link to invoice if available
         if invoice_sf_id:

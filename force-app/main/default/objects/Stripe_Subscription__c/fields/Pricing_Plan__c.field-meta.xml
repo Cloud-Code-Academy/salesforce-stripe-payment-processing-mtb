@@ -3,7 +3,6 @@
     <fullName>Pricing_Plan__c</fullName>
     <deleteConstraint>SetNull</deleteConstraint>
     <description>The pricing plan associated with this subscription</description>
-    <externalId>false</externalId>
     <label>Pricing Plan</label>
     <referenceTo>Pricing_Plan__c</referenceTo>
     <relationshipLabel>Stripe Subscriptions</relationshipLabel>

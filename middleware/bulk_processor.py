@@ -385,6 +385,60 @@ async def process_sqs_batch(event: Dict[str, Any], context: Any) -> List[Dict[st
                         # Mark current event as failed
                         failed_event_ids.append(stripe_event.id)
 
+            elif stripe_event.type in ("product.created", "product.updated", "product.deleted", "price.created", "price.updated", "price.deleted"):
+                # Product and price events are processed immediately via event handlers
+                logger.info(
+                    f"[PRODUCT_PRICE_EVENT] Processing product/price event immediately",
+                    extra={
+                        "event_id": stripe_event.id,
+                        "event_type": stripe_event.type
+                    }
+                )
+
+                try:
+                    # Import handlers
+                    from app.handlers import product_price_handler
+
+                    # Call appropriate handler based on event type
+                    handler_map = {
+                        "product.created": product_price_handler.handle_product_created,
+                        "product.updated": product_price_handler.handle_product_updated,
+                        "product.deleted": product_price_handler.handle_product_deleted,
+                        "price.created": product_price_handler.handle_price_created,
+                        "price.updated": product_price_handler.handle_price_updated,
+                        "price.deleted": product_price_handler.handle_price_deleted,
+                    }
+
+                    handler = handler_map.get(stripe_event.type)
+                    if handler:
+                        result = await handler(stripe_event.dict())
+                        logger.info(
+                            f"[PRODUCT_PRICE_EVENT_SUCCESS] Event processed successfully",
+                            extra={
+                                "event_id": stripe_event.id,
+                                "event_type": stripe_event.type,
+                                "result": result
+                            }
+                        )
+                    else:
+                        logger.warning(
+                            f"[PRODUCT_PRICE_EVENT_NO_HANDLER] No handler found for event type",
+                            extra={"event_type": stripe_event.type}
+                        )
+
+                except Exception as e:
+                    logger.error(
+                        f"[PRODUCT_PRICE_EVENT_ERROR] Failed to process product/price event: {str(e)}",
+                        exc_info=True,
+                        extra={
+                            "event_id": stripe_event.id,
+                            "event_type": stripe_event.type,
+                            "error": str(e)
+                        }
+                    )
+                    # Mark event as failed so it goes to DLQ
+                    failed_event_ids.append(stripe_event.id)
+
             else:
                 logger.warning(
                     f"Unsupported bulk event type: {stripe_event.type}",

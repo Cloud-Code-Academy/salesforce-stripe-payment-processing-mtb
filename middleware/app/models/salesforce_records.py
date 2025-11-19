@@ -225,6 +225,9 @@ class SalesforcePricingPlan(BaseModel):
     Stripe_Price_ID__c: str = Field(
         description="External ID - Stripe price ID"
     )
+    Name: Optional[str] = Field(
+        None, description="Standard Name field - populated with product name"
+    )
     ProductName__c: Optional[str] = Field(
         None, description="Name of the product from Stripe"
     )
@@ -248,6 +251,7 @@ class SalesforcePricingPlan(BaseModel):
         json_schema_extra = {
             "example": {
                 "Stripe_Price_ID__c": "price_ABC123",
+                "Name": "Premium Plan",
                 "ProductName__c": "Premium Plan",
                 "Amount__c": 29.99,
                 "Currency__c": "USD",

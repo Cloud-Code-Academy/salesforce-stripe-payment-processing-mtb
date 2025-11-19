@@ -124,7 +124,7 @@ public class StripeChainedCalloutQueueableTest {
             Pricing_Plan__c pricePlan = new Pricing_Plan__c(
                 ProductName__c = 'Test Product',
                 Currency__c = 'usd',
-                Recurrency_Type__c = 'month',
+                // Recurrency_Type__c = 'month',
                 Amount__c = 1000
             );
             insert pricePlan;
@@ -188,7 +188,7 @@ public class StripeChainedCalloutQueueableTest {
             // Create Pricing Plan
             Pricing_Plan__c pricePlan = new Pricing_Plan__c(
                 Currency__c = 'usd',
-                Recurrency_Type__c = 'month',
+                // Recurrency_Type__c = 'month',
                 Amount__c = 1000
             );
             insert pricePlan;

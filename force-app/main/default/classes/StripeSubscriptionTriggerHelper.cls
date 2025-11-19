@@ -63,9 +63,10 @@ public with sharing class StripeSubscriptionTriggerHelper {
                 && subscription.Sync_Status__c == STATUS_SEND_TO_STRIPE
                 && String.isBlank(subscription.Stripe_Subscription_ID__c)
                 && pricingPlan != null
-                && !String.isBlank(pricingPlan.Stripe_Price_ID__c)
-                && !String.isBlank(subscription.StripeCustomerId__c)
-                && !String.isBlank(subscription.CustomerDefaultPayment__c)) {
+                && !String.isBlank(subscription.StripeCustomerId__c)) {
+                // Note: Stripe_Price_ID__c and CustomerDefaultPayment__c are not required here
+                // - Stripe_Price_ID__c is validated in StripeCalloutQueueable
+                // - CustomerDefaultPayment__c is collected during the checkout session
                 subscriptionsForProcess.add(subscription);
             }
         }
@@ -155,9 +156,10 @@ public with sharing class StripeSubscriptionTriggerHelper {
                 && subscription.Sync_Status__c == STATUS_SYNCED
                 && !String.isBlank(subscription.Stripe_Subscription_ID__c)
                 && pricingPlan != null
-                && !String.isBlank(pricingPlan.Stripe_Price_ID__c)
-                && !String.isBlank(subscription.StripeCustomerId__c)
-                && !String.isBlank(subscription.CustomerDefaultPayment__c)) {
+                && !String.isBlank(subscription.StripeCustomerId__c)) {
+                // Note: Stripe_Price_ID__c and CustomerDefaultPayment__c are not required here
+                // - Stripe_Price_ID__c is validated in StripeCalloutQueueable
+                // - CustomerDefaultPayment__c is collected during the checkout session
                 subscriptionsForProcess.add(subscription);
             }
         }

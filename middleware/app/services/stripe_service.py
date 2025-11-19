@@ -148,6 +148,12 @@ class StripeService:
             "customer.subscription.created",
             "customer.subscription.deleted",
             "customer.updated",
+            "product.created",
+            "product.updated",
+            "product.deleted",
+            "price.created",
+            "price.updated",
+            "price.deleted",
         }
 
         is_supported = event_type in supported_events

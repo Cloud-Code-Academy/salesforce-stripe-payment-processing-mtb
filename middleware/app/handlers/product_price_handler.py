@@ -8,7 +8,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.models.salesforce_records import SalesforcePricingPlan, SalesforcePricingTier
-from app.services.salesforce_service import SalesforceService
+from app.services.salesforce_service import salesforce_service
+from app.services.stripe_service import stripe_service
 import stripe
 from app.config import settings
 
@@ -83,10 +84,6 @@ async def handle_product_updated(event: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
-        # Initialize Salesforce service
-        salesforce_service = SalesforceService()
-        await salesforce_service.initialize()
-
         # Query for all Pricing_Plan__c records that have prices for this product
         # We'll need to fetch prices from Stripe to find which ones belong to this product
         stripe.api_key = settings.stripe_api_key
@@ -97,9 +94,25 @@ async def handle_product_updated(event: Dict[str, Any]) -> Dict[str, Any]:
         updated_count = 0
         for price in prices.data:
             try:
-                # Update the ProductName__c field for each pricing plan
+                # Map Stripe interval to Salesforce picklist value
+                recurrency_mapping = {
+                    "day": "Daily",
+                    "week": "Weekly",
+                    "month": "Monthly",
+                    "quarter": "Quarterly",
+                    "year": "Yearly"
+                }
+
+                recurring = price.get("recurring", {})
+                interval = recurring.get("interval") if recurring else None
+                recurrency_type = recurrency_mapping.get(interval) if interval else None
+
+                # Include all required fields for upsert (in case the record doesn't exist yet)
                 update_data = {
-                    "ProductName__c": product_name
+                    "Name": product_name,
+                    "ProductName__c": product_name,
+                    "Currency__c": price.get("currency", "").upper(),
+                    "Recurrency_Type__c": recurrency_type
                 }
 
                 result = await salesforce_service.upsert_record(
@@ -197,9 +210,7 @@ async def handle_price_created(event: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
-        # Initialize services
-        salesforce_service = SalesforceService()
-        await salesforce_service.initialize()
+        # Initialize Stripe API key
         stripe.api_key = settings.stripe_api_key
 
         # Fetch product details from Stripe
@@ -230,6 +241,7 @@ async def handle_price_created(event: Dict[str, Any]) -> Dict[str, Any]:
         # Create Pricing_Plan__c record
         pricing_plan = SalesforcePricingPlan(
             Stripe_Price_ID__c=price_id,
+            Name=product_name,  # Standard Name field
             ProductName__c=product_name,
             Amount__c=price.get("unit_amount", 0) / 100 if price.get("unit_amount") else None,
             Currency__c=price.get("currency", "").upper(),
@@ -319,10 +331,6 @@ async def handle_price_updated(event: Dict[str, Any]) -> Dict[str, Any]:
             extra={"price_id": price_id}
         )
 
-        # Initialize Salesforce service
-        salesforce_service = SalesforceService()
-        await salesforce_service.initialize()
-
         # Since most price fields are immutable in Stripe, we mainly need to
         # update the active status and any metadata
         update_data = {}
@@ -386,10 +394,6 @@ async def handle_price_deleted(event: Dict[str, Any]) -> Dict[str, Any]:
             "Price deleted event received",
             extra={"price_id": price_id}
         )
-
-        # Initialize Salesforce service
-        salesforce_service = SalesforceService()
-        await salesforce_service.initialize()
 
         # Mark the pricing plan as inactive
         # Note: You might want to add an Active__c or IsDeleted__c field

@@ -55,6 +55,7 @@ LOW_PRIORITY_EVENTS = {
     "product.created",
     "product.updated",
     "product.deleted",
+    "price.created",
     "price.updated",
     "price.deleted",
 }

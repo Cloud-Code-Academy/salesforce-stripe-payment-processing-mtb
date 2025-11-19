@@ -284,7 +284,7 @@ async def test_handle_product_created(
     result = await product_price_handler.handle_product_created(sample_product_created_event)
 
     # Assert
-    assert result["status"] == "acknowledged"
+    assert result["success"] == True
     assert result["product_id"] == "prod_TestProduct"
     assert result["product_name"] == "Premium Plan"
 
@@ -310,9 +310,9 @@ async def test_handle_product_updated(
             result = await product_price_handler.handle_product_updated(sample_product_updated_event)
 
     # Assert
-    assert result["status"] == "success"
+    assert result["success"] == True
     assert result["updated_count"] == 2
-    assert mock_salesforce_service.upsert_pricing_plan.call_count == 2
+    assert mock_salesforce_service.upsert_record.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -324,9 +324,9 @@ async def test_handle_product_deleted(
     result = await product_price_handler.handle_product_deleted(sample_product_deleted_event)
 
     # Assert
-    assert result["status"] == "acknowledged"
+    assert result["success"] == True
     assert result["product_id"] == "prod_TestProduct"
-    assert "archived" in result["message"]
+    assert "deletion" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -343,14 +343,15 @@ async def test_handle_price_created_with_tiers(
             result = await product_price_handler.handle_price_created(sample_price_created_event)
 
     # Assert
-    assert result["status"] == "success"
-    assert result["pricing_plan_id"] == "a0Pxx0000000001AAA"
+    assert result["success"] == True
+    assert result["salesforce_id"] == "a0Pxx0000000001AAA"
     assert result["tiers_created"] == 3
 
     # Verify pricing plan was created with correct data
     mock_salesforce_service.upsert_pricing_plan.assert_called_once()
     plan_data = mock_salesforce_service.upsert_pricing_plan.call_args[0][0]
     assert plan_data.Stripe_Price_ID__c == "price_1ABC123"
+    assert plan_data.Name == "Premium Plan"
     assert plan_data.ProductName__c == "Premium Plan"
     assert plan_data.Currency__c == "usd"
     assert plan_data.Recurrency_Type__c == "Monthly"
@@ -376,8 +377,8 @@ async def test_handle_price_created_simple_pricing(
             result = await product_price_handler.handle_price_created(sample_price_created_event_simple)
 
     # Assert
-    assert result["status"] == "success"
-    assert result["pricing_plan_id"] == "a0Pxx0000000001AAA"
+    assert result["success"] == True
+    assert result["salesforce_id"] == "a0Pxx0000000001AAA"
     assert result["tiers_created"] == 0
 
     # Verify pricing plan was created with amount
@@ -437,9 +438,9 @@ async def test_handle_price_updated(
         result = await product_price_handler.handle_price_updated(sample_price_updated_event)
 
     # Assert
-    assert result["status"] == "acknowledged"
+    assert result["success"] == True
     assert result["price_id"] == "price_1ABC123"
-    assert "metadata" in result["message"]
+    assert "No updates" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -451,9 +452,9 @@ async def test_handle_price_deleted(
     result = await product_price_handler.handle_price_deleted(sample_price_deleted_event)
 
     # Assert
-    assert result["status"] == "acknowledged"
+    assert result["success"] == True
     assert result["price_id"] == "price_1ABC123"
-    assert "archived" in result["message"]
+    assert "deletion" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -570,7 +571,7 @@ async def test_handle_price_with_volume_tiers(
             result = await product_price_handler.handle_price_created(event)
 
     # Assert
-    assert result["status"] == "success"
+    assert result["success"] == True
     assert result["tiers_created"] == 3
 
     # Verify tier creation calls
@@ -580,6 +581,6 @@ async def test_handle_price_with_volume_tiers(
     # Check first tier
     first_tier = tier_calls[0][0][0]
     assert first_tier.Tier_Number__c == 1
-    assert first_tier.From_Quantity__c == 1
+    assert first_tier.From_Quantity__c == 0
     assert first_tier.To_Quantity__c == 10
     assert first_tier.Unit_Price__c == 10.00
