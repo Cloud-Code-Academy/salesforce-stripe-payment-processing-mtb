@@ -255,27 +255,27 @@ class PaymentHandler:
         Returns:
             Processing result with invoice ID and Salesforce record details
         """
-        invoice_data = event.get("data", {}).get("object", {})
-        invoice_id = invoice_data.get("id")
+        invoice = event.get("data", {}).get("object", {})
+        invoice_id = invoice.get("id")
 
         logger.info(
             f"Processing invoice.created event",
             extra={
                 "event_id": event.get("id"),
                 "invoice_id": invoice_id,
-                "customer_id": invoice_data.get("customer"),
-                "subscription_id": invoice_data.get("subscription"),
+                "customer_id": invoice.get("customer"),
+                "subscription_id": invoice.get("subscription"),
             },
         )
 
         try:
-            # Look up Salesforce IDs for subscription and customer
-            stripe_subscription_id = invoice_data.get("subscription")
-            stripe_customer_id = invoice_data.get("customer")
+            # Extract and format invoice data (converts cents to dollars)
+            invoice_data = self._extract_invoice_data(invoice)
 
+            # Look up Salesforce IDs for subscription and customer
             subscription_sf_id, salesforce_customer_id = await self._get_salesforce_ids(
-                stripe_subscription_id,
-                stripe_customer_id
+                invoice_data["subscription_id"],
+                invoice_data["customer_id"]
             )
 
             # Build standardized invoice record data using helper method
@@ -299,19 +299,19 @@ class PaymentHandler:
             logger.info(
                 f"Invoice created in Salesforce",
                 extra={
-                    "invoice_id": invoice_id,
-                    "status": invoice_data.get("status"),
-                    "amount": invoice_data.get("amount_due", 0) / 100,
+                    "invoice_id": invoice_data["invoice_id"],
+                    "status": "open",
+                    "amount": invoice_data.get("amount_due", 0),
                 },
             )
 
             return {
-                "invoice_id": invoice_id,
-                "status": invoice_data.get("status"),
-                "amount": invoice_data.get("amount_due", 0) / 100 if invoice_data.get("amount_due") else 0,
+                "invoice_id": invoice_data["invoice_id"],
+                "status": "open",
+                "amount": invoice_data.get("amount_due", 0),
                 "currency": invoice_data.get("currency", "").upper(),
-                "customer_id": invoice_data.get("customer"),
-                "subscription_id": invoice_data.get("subscription"),
+                "customer_id": invoice_data.get("customer_id"),
+                "subscription_id": invoice_data.get("subscription_id"),
                 "salesforce_result": result,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
