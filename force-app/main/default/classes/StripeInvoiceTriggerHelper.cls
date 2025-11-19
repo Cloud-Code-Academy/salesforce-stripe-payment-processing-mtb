@@ -1,3 +1,10 @@
+/**
+ * @description Helper class for Stripe Invoice trigger operations.
+ *              Uses 'without sharing' to ensure system-level access for financial calculations
+ *              across all customer records, regardless of user's sharing rules.
+ *              This is required for accurate revenue aggregation and health score calculations
+ *              that need to analyze all invoices associated with a customer.
+ */
 public without sharing class StripeInvoiceTriggerHelper {
     private static final String PAID_STATUS = 'paid';
     private static final String UNCOLLECTIBLE_STATUS = 'uncollectible';
@@ -7,6 +14,9 @@ public without sharing class StripeInvoiceTriggerHelper {
     private static final String NONE_DUNNING_STATUS ='none';
     private static final String TRYING_DUNNING_STATUS ='trying';
     private static final String FINANCE_TEAM_QUEUE_NAME = 'FinanceTeam';
+    private static final Integer INVOICE_HISTORY_MONTHS = 6;
+    private static final Integer TASK_DUE_DAYS_NORMAL = 3;
+    private static final Integer TASK_DUE_DAYS_URGENT = 1;
     private static  Map <Id, String> financeTeamQueueData;
     /**
      * @description Calculates and updates Total Revenue for Stripe Customers based on paid invoices.
@@ -244,7 +254,7 @@ public without sharing class StripeInvoiceTriggerHelper {
                 followUpTask.Priority = 'Normal';
                 followUpTask.Status = 'Not Started';
                 followUpTask.WhatId = invoice.Id;
-                followUpTask.ActivityDate = Date.today().addDays(3);
+                followUpTask.ActivityDate = Date.today().addDays(TASK_DUE_DAYS_NORMAL);
                 if (!financeQueueIdToEmail.isEmpty()) {
                     followUpTask.OwnerId = new List<Id>(financeQueueIdToEmail.keySet())[0];
                 }
@@ -258,7 +268,7 @@ public without sharing class StripeInvoiceTriggerHelper {
                 followUpTask.Priority = 'High';
                 followUpTask.Status = 'Not Started';
                 followUpTask.WhatId = invoice.Id;
-                followUpTask.ActivityDate = Date.today().addDays(1);
+                followUpTask.ActivityDate = Date.today().addDays(TASK_DUE_DAYS_URGENT);
                 if (!financeQueueIdToEmail.isEmpty()) {
                     followUpTask.OwnerId = new List<Id>(financeQueueIdToEmail.keySet())[0];
                 }
@@ -274,7 +284,10 @@ public without sharing class StripeInvoiceTriggerHelper {
                 Logger.saveLog();
             }
         } else {
-            throw new SecurityException('User does not have create access to Task object');
+            Logger.error('User does not have create access to Task object')
+                .addTag('StripeInvoiceTriggerHelper')
+                .addTag('Task-Creation-Error');
+            Logger.saveLog();
         }
     }
 
@@ -321,10 +334,12 @@ public without sharing class StripeInvoiceTriggerHelper {
         // Calculate health scores for each customer
         Map<Id, Decimal> customerHealthScores = new Map<Id, Decimal>();
         Map<Id, List<Stripe_Invoice__c>> customerIdsToInvoices = new Map<Id, List<Stripe_Invoice__c>>();
-        for (Stripe_Invoice__c invoice : [                
+        Date invoiceCutoffDate = Date.today().addMonths(-INVOICE_HISTORY_MONTHS);
+        for (Stripe_Invoice__c invoice : [
                 SELECT Status__c, Dunning_Status__c, Due_Date__c, Amount__c, Contact__c
                 FROM Stripe_Invoice__c
                 WHERE Contact__c IN :customerIds
+                AND CreatedDate >= :invoiceCutoffDate
                 ORDER BY CreatedDate DESC
                 LIMIT 50
             ]) {
@@ -443,10 +458,12 @@ public without sharing class StripeInvoiceTriggerHelper {
         // Assess churn risk for each customer
         Map<Id, String> customerChurnRisk = new Map<Id, String>();
         Map<Id, List<Stripe_Invoice__c>> customerIdsToInvoices = new Map<Id, List<Stripe_Invoice__c>>();
-        for (Stripe_Invoice__c invoice : [                
+        Date invoiceCutoffDate = Date.today().addMonths(-INVOICE_HISTORY_MONTHS);
+        for (Stripe_Invoice__c invoice : [
                 SELECT Status__c, Dunning_Status__c, CreatedDate, Contact__c
                 FROM Stripe_Invoice__c
                 WHERE Contact__c IN :customerIds
+                AND CreatedDate >= :invoiceCutoffDate
                 ORDER BY CreatedDate DESC
                 LIMIT 50
             ]) {
@@ -559,18 +576,20 @@ public without sharing class StripeInvoiceTriggerHelper {
         if (financeTeamQueueData == null) {
             financeTeamQueueData = new Map<Id, String>();
             List<Group> queues = [
-                SELECT Email 
-                FROM Group 
-                WHERE Type = 'Queue' 
+                SELECT Email
+                FROM Group
+                WHERE Type = 'Queue'
                 AND DeveloperName =: FINANCE_TEAM_QUEUE_NAME
                 LIMIT 1
             ];
-            
+
             for (Group currentQueue : queues) {
-                financeTeamQueueData.put(currentQueue.Id, currentQueue.Email);
+                if (currentQueue.Email != null) {
+                    financeTeamQueueData.put(currentQueue.Id, currentQueue.Email);
+                }
             }
         }
-        
+
         return financeTeamQueueData;
     }
 
