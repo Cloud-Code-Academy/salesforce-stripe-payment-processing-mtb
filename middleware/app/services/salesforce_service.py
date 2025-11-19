@@ -15,6 +15,8 @@ from app.models.salesforce_records import (
     SalesforceContact,
     SalesforceCustomer,
     SalesforcePaymentTransaction,
+    SalesforcePricingPlan,
+    SalesforcePricingTier,
     SalesforceSubscription,
 )
 from app.services.rate_limiter import get_rate_limiter
@@ -445,6 +447,98 @@ class SalesforceService:
             external_id_value=invoice_data.Stripe_Invoice_ID__c,
             record_data=record_data,
         )
+
+    async def upsert_pricing_plan(
+        self, plan_data: SalesforcePricingPlan
+    ) -> Dict[str, Any]:
+        """
+        Upsert pricing plan record using Stripe_Price_ID__c as external ID.
+
+        Args:
+            plan_data: Pricing plan data model
+
+        Returns:
+            Upsert response with record ID
+        """
+        # Exclude the external ID field from the request body
+        record_data = plan_data.model_dump(mode="json", exclude_none=True)
+        record_data.pop("Stripe_Price_ID__c", None)
+
+        return await self.upsert_record(
+            sobject_type="Pricing_Plan__c",
+            external_id_field="Stripe_Price_ID__c",
+            external_id_value=plan_data.Stripe_Price_ID__c,
+            record_data=record_data,
+        )
+
+    async def create_pricing_tier(
+        self, tier_data: SalesforcePricingTier
+    ) -> Dict[str, Any]:
+        """
+        Create pricing tier record.
+
+        Pricing tiers don't have external IDs, so we use regular create.
+        They are children of Pricing_Plan__c via Master-Detail relationship.
+
+        Args:
+            tier_data: Pricing tier data model
+
+        Returns:
+            Create response with record ID
+        """
+        record_data = tier_data.model_dump(mode="json", exclude_none=True)
+
+        return await self.create_record(
+            sobject_type="Pricing_Tier__c",
+            record_data=record_data,
+        )
+
+    async def delete_pricing_tiers_for_plan(
+        self, pricing_plan_id: str
+    ) -> Dict[str, Any]:
+        """
+        Delete all pricing tiers for a given pricing plan.
+
+        Used when updating tier structure for a price.
+
+        Args:
+            pricing_plan_id: Salesforce ID of the Pricing_Plan__c record
+
+        Returns:
+            Deletion results
+        """
+        try:
+            # First, query for all existing tiers
+            query = f"SELECT Id FROM Pricing_Tier__c WHERE Pricing_Plan__c = '{pricing_plan_id}'"
+            result = await self.query(query)
+
+            deleted_count = 0
+            errors = []
+
+            # Delete each tier
+            for tier in result.get("records", []):
+                try:
+                    await self.delete_record("Pricing_Tier__c", tier["Id"])
+                    deleted_count += 1
+                except Exception as e:
+                    errors.append({
+                        "tier_id": tier["Id"],
+                        "error": str(e)
+                    })
+
+            return {
+                "success": len(errors) == 0,
+                "deleted_count": deleted_count,
+                "errors": errors
+            }
+
+        except Exception as e:
+            logger.error(f"Error deleting pricing tiers: {str(e)}")
+            return {
+                "success": False,
+                "deleted_count": 0,
+                "errors": [str(e)]
+            }
 
     async def query(self, soql: str) -> Dict[str, Any]:
         """
