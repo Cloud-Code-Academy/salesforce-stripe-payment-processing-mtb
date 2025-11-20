@@ -8,6 +8,9 @@ public with sharing class StripeSubscriptionTriggerHelper {
     private static final String STATUS_SEND_TO_STRIPE = 'Send to Stripe';
     private static final String STATUS_SYNCED = 'Completed';
     private static final String STATUS_FAILED = 'Failed';
+    private static final String STATUS_ACTIVE = 'active';
+    private static final Decimal ZERO_VALUE = 0;
+    private static final Integer AVERAGE_DAYS_IN_MONTH = 30;
     /**
      * @description Processes subscription records marked for sync to Stripe. Identifies subscriptions with 'Send to Stripe'
      *              status that have all required data (price, customer, payment method) and initiates asynchronous callouts

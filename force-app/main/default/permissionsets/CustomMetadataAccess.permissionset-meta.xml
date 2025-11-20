@@ -6,10 +6,6 @@
     </customMetadataTypeAccesses>
     <customMetadataTypeAccesses>
         <enabled>true</enabled>
-        <name>StripePaymentSettings__mdt</name>
-    </customMetadataTypeAccesses>
-    <customMetadataTypeAccesses>
-        <enabled>true</enabled>
         <name>Stripe_Price__mdt</name>
     </customMetadataTypeAccesses>
     <description>Provides access to Custom metadata, storing data for outbound integration and creating Pricing Plan records.</description>
