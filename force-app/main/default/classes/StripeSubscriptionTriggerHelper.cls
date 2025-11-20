@@ -20,12 +20,13 @@ public with sharing class StripeSubscriptionTriggerHelper {
      */
     public static void processStripeSubscriptionAfterUpdate(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
         // Validate input parameters
-        if (newList == null || newList.isEmpty() || oldMap == null) {
+        if (newList == null || newList.isEmpty()) {
             return;
         }
 
         List<Stripe_Subscription__c> subscriptionsForProcess = new List<Stripe_Subscription__c>();
         List<Stripe_Subscription__c> subscriptionsForUpdate = new List<Stripe_Subscription__c>();
+        Boolean isInsert = (oldMap == null || oldMap.isEmpty());
 
         if (!Schema.SObjectType.Stripe_Subscription__c.isAccessible()) {
             throw new SecurityException('User does not have read access to Stripe_Subscription__c object');
@@ -35,36 +36,60 @@ public with sharing class StripeSubscriptionTriggerHelper {
             throw new SecurityException('User does not have update access to Stripe_Subscription__c object');
         }
 
+        Set<Id> pricingPlanIds = new Set<Id>();
         for (Stripe_Subscription__c subscription : newList) {
-            Stripe_Subscription__c oldSubscription = oldMap.get(subscription.Id);
+            if (subscription.Pricing_Plan__c != null) {
+                pricingPlanIds.add(subscription.Pricing_Plan__c);
+            }
+        }
+
+        // Query Pricing Plans to get their Stripe Price IDs
+        Map<Id, Pricing_Plan__c> pricingPlanMap = new Map<Id, Pricing_Plan__c>();
+        if (!pricingPlanIds.isEmpty()) {
+            if (!Schema.SObjectType.Pricing_Plan__c.isAccessible()) {
+                throw new SecurityException('User does not have read access to Pricing_Plan__c object');
+            }
+            pricingPlanMap = new Map<Id, Pricing_Plan__c>(
+                [SELECT Id, Stripe_Price_ID__c
+                 FROM Pricing_Plan__c
+                 WHERE Id IN :pricingPlanIds]
+            );
+        }
+
+        for (Stripe_Subscription__c subscription : newList) {
+            Stripe_Subscription__c oldSubscription = isInsert ? null : oldMap.get(subscription.Id);
+            Pricing_Plan__c pricingPlan = pricingPlanMap.get(subscription.Pricing_Plan__c);
+
             // Changed logic: Instead of creating subscription directly, create checkout session which will create the subscription
-            if (oldSubscription != null
-                && oldSubscription.Sync_Status__c != subscription.Sync_Status__c
+            Boolean statusChanged = isInsert ? true : (oldSubscription != null && oldSubscription.Sync_Status__c != subscription.Sync_Status__c);
+            if (statusChanged
                 && subscription.Sync_Status__c == STATUS_SEND_TO_STRIPE
                 && String.isBlank(subscription.Stripe_Subscription_ID__c)
-                && !String.isBlank(subscription.Stripe_Price_ID__c)
-                && !String.isBlank(subscription.StripeCustomerId__c)
-                && !String.isBlank(subscription.CustomerDefaultPayment__c)) {
+                && pricingPlan != null
+                && !String.isBlank(subscription.StripeCustomerId__c)) {
+                // Note: Stripe_Price_ID__c and CustomerDefaultPayment__c are not required here
+                // - Stripe_Price_ID__c is validated in StripeCalloutQueueable
+                // - CustomerDefaultPayment__c is collected during the checkout session
                 subscriptionsForProcess.add(subscription);
             }
         }
 
         if (!subscriptionsForProcess.isEmpty()) {
-            for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
-                try {
-                    // Create checkout session directly - this will create the subscription in Stripe
-                    StripeCalloutQueueable callout = new StripeCalloutQueueable(
-                        subscriptionRec.StripeCustomerId__c,
-                        subscriptionRec.Stripe_Price_ID__c,
-                        subscriptionRec.Id
-                    );
-                    if (!Test.isRunningTest()) {
-                        System.enqueueJob(callout);
-                    }
-                } catch (Exception ex) {
-                    Logger.error('Failed to enqueue checkout session callout for subscription: ' + subscriptionRec.Id, ex);
+            try {
+                // Enqueue a single batch job for all subscriptions instead of one per record
+                StripeCalloutQueueable callout = new StripeCalloutQueueable(subscriptionsForProcess, pricingPlanMap);
+                if (!Test.isRunningTest()) {
+                    System.enqueueJob(callout);
+                    Logger.info('Enqueued batch job for ' + subscriptionsForProcess.size() + ' subscription checkout sessions')
+                        .addTag('StripeSubscriptionTriggerHelper')
+                        .addTag('Batch-Processing');
                     Logger.saveLog();
-                    // Track failed subscriptions for status update
+                }
+            } catch (Exception ex) {
+                Logger.error('Failed to enqueue batch checkout session callout', ex);
+                Logger.saveLog();
+                // Mark all subscriptions as failed
+                for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
                     subscriptionRec.Sync_Status__c = STATUS_FAILED;
                     subscriptionsForUpdate.add(subscriptionRec);
                 }
@@ -82,167 +107,96 @@ public with sharing class StripeSubscriptionTriggerHelper {
         }
     }
     /**
-     * @description Creates Pricing Plan records when a pricing plan is selected on a subscription. Retrieves plan details
-     *              from Stripe_Price__mdt custom metadata and creates corresponding Pricing_Plan__c records linked to the
-     *              subscription. Enforces object-level permissions for both read and create operations.
+     * @description Processes successfully synced subscriptions to create Stripe Checkout Sessions. Identifies subscriptions
+     *              with 'Completed' status that have all required data and initiates asynchronous callouts to create a checkout
+     *              session for payment collection. Enforces object-level read permissions.
      * @param newList List of updated Stripe_Subscription__c records
      * @param oldMap Map of Stripe_Subscription__c records before the update (Id to old record)
      */
-    public static void createPricingPlansUponSelection(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
+    public static void processStripeSubscriptionToCreateSession(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
         // Validate input parameters
         if (newList == null || newList.isEmpty() || oldMap == null) {
             return;
         }
 
-        List<Pricing_Plan__c> pricingPlansForInsert = new List<Pricing_Plan__c>();
+        List<Stripe_Subscription__c> subscriptionsForProcess = new List<Stripe_Subscription__c>();
+        List<Stripe_Subscription__c> subscriptionsForUpdate = new List<Stripe_Subscription__c>();
 
         if (!Schema.SObjectType.Stripe_Subscription__c.isAccessible()) {
             throw new SecurityException('User does not have read access to Stripe_Subscription__c object');
         }
 
-        if (!Schema.SObjectType.Pricing_Plan__c.isCreateable()) {
-            throw new SecurityException('User does not have create access to Pricing_Plan__c object');
+        if (!Schema.SObjectType.Stripe_Subscription__c.isUpdateable()) {
+            throw new SecurityException('User does not have update access to Stripe_Subscription__c object');
+        }
+
+        Set<Id> pricingPlanIds = new Set<Id>();
+        for (Stripe_Subscription__c subscription : newList) {
+            if (subscription.Pricing_Plan__c != null) {
+                pricingPlanIds.add(subscription.Pricing_Plan__c);
+            }
+        }
+
+        // Query Pricing Plans to get their Stripe Price IDs
+        Map<Id, Pricing_Plan__c> pricingPlanMap = new Map<Id, Pricing_Plan__c>();
+        if (!pricingPlanIds.isEmpty()) {
+            if (!Schema.SObjectType.Pricing_Plan__c.isAccessible()) {
+                throw new SecurityException('User does not have read access to Pricing_Plan__c object');
+            }
+            pricingPlanMap = new Map<Id, Pricing_Plan__c>(
+                [SELECT Id, Stripe_Price_ID__c
+                 FROM Pricing_Plan__c
+                 WHERE Id IN :pricingPlanIds]
+            );
         }
 
         for (Stripe_Subscription__c subscription : newList) {
             Stripe_Subscription__c oldSubscription = oldMap.get(subscription.Id);
-            if (oldSubscription != null && subscription.PricingPlans__c != null
-                && oldSubscription.PricingPlans__c != subscription.PricingPlans__c) {
+            Pricing_Plan__c pricingPlan = pricingPlanMap.get(subscription.Pricing_Plan__c);
 
-                // Retrieve metadata and validate it exists
-                Stripe_Price__mdt stripePrice = Stripe_Price__mdt.getInstance(subscription.PricingPlans__c);
-
-                if (stripePrice == null) {
-                    Logger.error('Stripe Price metadata not found for: ' + subscription.PricingPlans__c +
-                                ' on subscription: ' + subscription.Id);
-                    Logger.saveLog();
-                    continue; // Skip this subscription and continue processing others
-                }
-
-                Pricing_Plan__c pricingPlan = new Pricing_Plan__c();
-
-                // Check field-level security before setting each field
-                if (Schema.SObjectType.Pricing_Plan__c.fields.Name.isCreateable()) {
-                    pricingPlan.Name = stripePrice.DeveloperName;
-                }
-                if (Schema.SObjectType.Pricing_Plan__c.fields.Amount__c.isCreateable()) {
-                    pricingPlan.Amount__c = stripePrice.Amount__c;
-                }
-                if (Schema.SObjectType.Pricing_Plan__c.fields.Currency__c.isCreateable()) {
-                    pricingPlan.Currency__c = stripePrice.Currency__c;
-                }
-                if (Schema.SObjectType.Pricing_Plan__c.fields.Recurrency_Type__c.isCreateable()) {
-                    pricingPlan.Recurrency_Type__c = stripePrice.RecurrencyType__c;
-                }
-                if (Schema.SObjectType.Pricing_Plan__c.fields.Stripe_Subscription__c.isCreateable()) {
-                    pricingPlan.Stripe_Subscription__c = subscription.Id;
-                }
-
-                pricingPlansForInsert.add(pricingPlan);
+            if (oldSubscription != null
+                && oldSubscription.Sync_Status__c != subscription.Sync_Status__c
+                && subscription.Sync_Status__c == STATUS_SYNCED
+                && !String.isBlank(subscription.Stripe_Subscription_ID__c)
+                && pricingPlan != null
+                && !String.isBlank(subscription.StripeCustomerId__c)) {
+                // Note: Stripe_Price_ID__c and CustomerDefaultPayment__c are not required here
+                // - Stripe_Price_ID__c is validated in StripeCalloutQueueable
+                // - CustomerDefaultPayment__c is collected during the checkout session
+                subscriptionsForProcess.add(subscription);
             }
         }
 
-        if (!pricingPlansForInsert.isEmpty()) {
+        if (!subscriptionsForProcess.isEmpty()) {
             try {
-                insert as user pricingPlansForInsert;
-            } catch (DmlException dmlEx) {
-                Logger.error('Failed to insert pricing plans', dmlEx);
+                // Enqueue a single batch job for all subscriptions instead of one per record
+                StripeCalloutQueueable callout = new StripeCalloutQueueable(subscriptionsForProcess, pricingPlanMap);
+                if (!Test.isRunningTest()) {
+                    System.enqueueJob(callout);
+                    Logger.info('Enqueued batch job for ' + subscriptionsForProcess.size() + ' subscriptions to create checkout sessions')
+                        .addTag('StripeSubscriptionTriggerHelper')
+                        .addTag('Batch-Processing');
+                    Logger.saveLog();
+                }
+            } catch (Exception ex) {
+                Logger.error('Failed to enqueue batch checkout session callout', ex);
                 Logger.saveLog();
-                // Re-throw to ensure trigger fails if pricing plans can't be created
-                throw dmlEx;
-            }
-        }
-    }
-    /**
-     * @description Calculates and updates the Monthly Recurring Revenue (MRR) for Contacts
-     *              based on their active Stripe subscriptions. This method is triggered when
-     *              subscription status changes to/from Active or when subscription amount changes
-     *              on an Active subscription.
-     * 
-     * @param newList List of Stripe_Subscription__c records with new values (after update)
-     * @param oldMap Map of Stripe_Subscription__c records with old values (before update), keyed by Id
-     * 
-     * */
-    public static void calculateMRR_OfStripeCustomer(List<Stripe_Subscription__c> newList, Map<Id, Stripe_Subscription__c> oldMap){
-        Set<Id> customerIds = new Set<Id>();
-        Map<Id, Decimal> customerIdsToMRR = new Map<Id, Decimal>();
-        Map<Id, Contact> customerIdsToCustomers = new Map<Id, Contact>();
-        // Validate input parameters
-        if (newList == null || newList.isEmpty() || oldMap == null) {
-            return;
-        }
-        try {
-            for (Stripe_Subscription__c subscription : newList) {
-                //Check whether Subscription related to Customer
-                if (subscription.Contact__c != null) {
-                    //Check whether Status field was updated to or from Active value
-                    if ((oldMap.get(subscription.Id).Status__c != subscription.Status__c 
-                        && subscription.Amount__c != null
-                        && (oldMap.get(subscription.Id).Status__c == STATUS_ACTIVE
-                            || subscription.Status__c == STATUS_ACTIVE))
-                        //Check whether Amount__c field was updated on Active Subscription
-                        || (oldMap.get(subscription.Id).Amount__c != subscription.Amount__c 
-                            && subscription.Status__c == STATUS_ACTIVE)) {
-                        customerIds.add(subscription.Contact__c);
-                    }
+                // Mark all subscriptions as failed
+                for (Stripe_Subscription__c subscriptionRec : subscriptionsForProcess) {
+                    subscriptionRec.Sync_Status__c = STATUS_FAILED;
+                    subscriptionsForUpdate.add(subscriptionRec);
                 }
             }
-            //Exit early if no records meet criteria
-            if (customerIds.isEmpty()) {
-                return;
-            }
-            //Loop through all subscriptions and calculate MRR
-            for (Stripe_Subscription__c subscription : [SELECT Amount__c, Current_Period_Start__c, Current_Period_End__c, Contact__c
-                                                        FROM Stripe_Subscription__c
-                                                        WHERE Status__c =: STATUS_ACTIVE
-                                                        AND Contact__c IN: customerIds
-                                                        AND Amount__c != null
-                                                        AND Current_Period_Start__c != null
-                                                        AND Current_Period_End__c != null]) {
-                //Calculate days for current Subscription
-                Integer subscriptionDays = Date.valueOf(subscription.Current_Period_Start__c).daysBetween(Date.valueOf(subscription.Current_Period_End__c));
-                if (subscriptionDays <= 0) {
-                    subscriptionDays = 1;
-                }
-                //Calculate average Revenue per day
-                Decimal amountPerDay = subscription.Amount__c / subscriptionDays;
-                //Calculate monthly Revenue
-                Decimal monthlyRevenue = amountPerDay * AVERAGE_DAYS_IN_MONTH;
-                if (!customerIdsToMRR.containsKey(subscription.Contact__c)) {
-                    customerIdsToMRR.put(subscription.Contact__c, 0);    
-                }
-                //Aggregate monthly revenues across all Subscriptions
-                customerIdsToMRR.put(subscription.Contact__c, 
-                                    customerIdsToMRR.get(subscription.Contact__c) + monthlyRevenue);
-            }
-            //Collect records for update in Map to avoid duplicates
-            for (Id customerId : customerIds) {
-                if (customerIdsToMRR.containsKey(customerId)) {
-                    customerIdsToCustomers.put(customerId, new Contact(Id = customerId,
-                                                                        MRR__c = customerIdsToMRR.get(customerId)));
-                } else {
-                    //Assign zero value if no active Subscription is found 
-                    customerIdsToCustomers.put(customerId, new Contact(Id = customerId,
-                                                                        MRR__c = ZERO_VALUE));
-                }
-            }
-            if (!customerIdsToCustomers.isEmpty()) {
+
+            // Update subscriptions that failed to enqueue
+            if (!subscriptionsForUpdate.isEmpty()) {
                 try {
-                    update customerIdsToCustomers.values();
+                    update as user subscriptionsForUpdate;
                 } catch (DmlException dmlEx) {
-                    Logger.error('Failed to update Contact records: ', dmlEx)
-                    .setMessage('Failed to update MRR field on Contacts. Stack trace: ' + dmlEx.getStackTraceString())
-                    .addTag('StripeSubscriptionTriggerHelper')
-                    .addTag('MRR-Calculation-Error');
+                    Logger.error('Failed to update subscription status after checkout session callout failure', dmlEx);
                     Logger.saveLog();
                 }
             }
-        } catch (Exception ex) {
-            Logger.error('Error in calculateMRR_OfStripeCustomer: ' + ex.getMessage(), ex)
-            .setMessage('Failed to calculate MRR. Stack trace: ' + ex.getStackTraceString())
-            .addTag('StripeSubscriptionTriggerHelper')
-            .addTag('MRR-Calculation-Error');
-            Logger.saveLog();
         }
     }
 }

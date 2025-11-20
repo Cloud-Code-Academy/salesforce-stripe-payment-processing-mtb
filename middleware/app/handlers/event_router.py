@@ -27,7 +27,8 @@ from app.utils.logging_config import get_logger
 from app.handlers import (
     customer_handler,
     subscription_handler,
-    payment_handler
+    payment_handler,
+    product_price_handler
 )
 
 logger = get_logger(__name__)
@@ -51,6 +52,12 @@ HIGH_PRIORITY_EVENTS = {
 # Low-priority events sent to separate SQS queue for batch processing
 LOW_PRIORITY_EVENTS = {
     "customer.updated",
+    "product.created",
+    "product.updated",
+    "product.deleted",
+    "price.created",
+    "price.updated",
+    "price.deleted",
 }
 
 
@@ -74,6 +81,16 @@ EVENT_HANDLERS = {
     "invoice.created": payment_handler.handle_invoice_created,
     "invoice.payment_succeeded": payment_handler.handle_invoice_payment_succeeded,
     "invoice.payment_failed": payment_handler.handle_invoice_payment_failed,
+
+    # Product events
+    "product.created": product_price_handler.handle_product_created,
+    "product.updated": product_price_handler.handle_product_updated,
+    "product.deleted": product_price_handler.handle_product_deleted,
+
+    # Price events
+    "price.created": product_price_handler.handle_price_created,
+    "price.updated": product_price_handler.handle_price_updated,
+    "price.deleted": product_price_handler.handle_price_deleted,
 }
 
 

@@ -5,65 +5,87 @@ title Class Diagram - Stripe Integration
 package Stripe{
     class Customer
     class Subscription
-    class PaymentTransaction
+    class PaymentIntent
+    class Invoice
 }
 
 package Salesforce {
     class Contact {
-        - StripeCustomerID: String (External ID)
-    }
-    class StripeCustomer {
-        - StripeCustomerID: String (External ID)
-        - Email: String
-        - Name: String
-        - Phone: String
+        - StripeCustomerID: String (External ID, Unique)
+        - SubscriptionStatus: Picklist
         - DefaultPaymentMethod: String
-        - SubscriptionStatus: String
+        - MRR: Currency
+        - TotalRevenue: Currency
+        - HealthScore: Number
+        - ChurnRisk: String
     }
-    class StripeSubscription {
+
+    class Stripe_Subscription__c {
         - StripeSubscriptionID: String (External ID)
+        - Contact: MasterDetail
+        - PricingPlan: Lookup
+        - StripeCustomerId: Formula
         - Status: Picklist
-        - CurrentPeriodStart: Date
-        - CurrentPeriodEnd: Date
+        - CurrentPeriodStart: DateTime
+        - CurrentPeriodEnd: DateTime
         - Amount: Currency
         - Currency: String
+        - Quantity: Number
+        - ProductPlanName: String
         - CheckoutSessionID: String
         - CheckoutURL: String
+        - CustomerDefaultPayment: Formula
         - SyncStatus: Picklist
         - ErrorMessage: LongText
     }
-    class StripePaymentTransaction {
+
+    class Stripe_Invoice__c {
+        - StripeInvoiceID: String (External ID)
+        - Contact: Lookup
+        - StripeSubscription: Lookup
+        - Amount: Currency
+        - Currency: String
+        - Status: Picklist
+        - DueDate: DateTime
+        - PeriodStart: DateTime
+        - PeriodEnd: DateTime
+        - TaxAmount: Currency
+        - DiscountsApplied: LongText
+        - LineItems: LongText
+        - InvoicePDFURL: URL
+        - DunningStatus: Picklist
+    }
+
+    class Payment_Transaction__c {
         - StripePaymentIntentID: String (External ID)
+        - StripeInvoice: MasterDetail
         - Amount: Currency
         - Currency: String
         - Status: Picklist
         - PaymentMethodType: String
         - TransactionDate: DateTime
+        - TransactionType: Picklist
+        - FailureReason: String
     }
-     class StripeInvoice {
-        - StripeInvoiceID: String (External ID)
-        - Amount: Currency
-        - Currency: String
-        - Status: Picklist
-        - InvoiceDate: DateTime
-        - DueDate: DateTime
-        - PaidDate: DateTime
-        - Description: LongText
-    }
-    class PricingPlan {
+
+    class Pricing_Plan__c {
         - StripePriceID: String (External ID)
         - Amount: Currency
         - Currency: String
         - RecurrencyType: Picklist
+        - ProductName: String
     }
+
     enum RecurrencyType {
-        - Daily
-        - Weekly
-        - Monthly
-        - Quartely
-        - Yearly
+        Daily
+        Weekly
+        Monthly
+        Quarterly
+        Yearly
     }
-    class PricingTier {
+
+    class Pricing_Tier__c {
+        - PricingPlan: MasterDetail
         - TierNumber: Integer
         - FromQuantity: Integer
         - ToQuantity: Integer
@@ -71,26 +93,66 @@ package Salesforce {
         - Discount: Percentage
     }
 
+    enum SubscriptionStatus {
+        Draft
+        Active
+        Canceled
+        Incomplete
+        Incomplete Expired
+        Past Due
+        Trialing
+        Unpaid
+    }
+
     enum DunningStatus {
-        NONE
-        TRYING
-        EXHAUSTED
+        None
+        Trying
+        Exhausted
+    }
+
+    enum PaymentTransactionStatus {
+        Requires Payment Method
+        Requires Confirmation
+        Requires Action
+        Processing
+        Requires Capture
+        Canceled
+        Succeeded
+    }
+
+    enum TransactionType {
+        Initial Payment
+        Recurring Payment
+    }
+
+    enum SyncStatus {
+        Draft
+        Send to Stripe
+        Pending
+        Completed
+        Checkout Created
+        Failed
     }
 }
 
-Customer "1" -- "0..1" StripeCustomer : syncs to
-Subscription "1" -- "0..1" StripeSubscription : syncs to
-PaymentTransaction "1" -- "0..1" StripePaymentTransaction : syncs to
+' Stripe to Salesforce sync relationships
+Customer "1" -- "0..1" Contact : syncs to
+Subscription "1" -- "0..1" Stripe_Subscription__c : syncs to
+PaymentIntent "1" -- "0..1" Payment_Transaction__c : syncs to
+Invoice "1" -- "0..1" Stripe_Invoice__c : syncs to
 
-Contact "1" --o "0..1" StripeCustomer : linked to
-StripeCustomer "1" --> "0..*" StripeSubscription : has
-StripeCustomer "1" --> "0..*" StripeInvoice : has
-StripeSubscription "1" -l-> "1" PricingPlan : contains
-StripeSubscription "1" --> "0..*" StripeInvoice : generates
-StripeSubscription "1" <-- "0..*" StripePaymentTransaction : payment for
-StripeInvoice "1" --> "1" DunningStatus : has
-StripeInvoice "1" <-- "0..*" StripePaymentTransaction : paid by
-PricingPlan "1" --> "1" RecurrencyType : defines
-PricingPlan "1" *-- "0..*" PricingTier
+' Salesforce object relationships
+Contact "1" *-- "0..*" Stripe_Subscription__c : has (MD)
+Contact "1" --> "0..*" Stripe_Invoice__c : has (Lookup)
+Stripe_Subscription__c "1" --> "0..*" Stripe_Invoice__c : generates (Lookup)
+Stripe_Subscription__c "1" --> "0..1" Pricing_Plan__c : uses (Lookup)
+Stripe_Invoice__c "1" *-- "0..*" Payment_Transaction__c : paid by (MD)
+Stripe_Invoice__c "1" --> "1" DunningStatus : has
+Stripe_Subscription__c "1" --> "1" SubscriptionStatus : has
+Stripe_Subscription__c "1" --> "1" SyncStatus : has
+Payment_Transaction__c "1" --> "1" PaymentTransactionStatus : has
+Payment_Transaction__c "1" --> "1" TransactionType : has
+Pricing_Plan__c "1" --> "1" RecurrencyType : has
+Pricing_Plan__c "1" *-- "0..*" Pricing_Tier__c : contains (MD)
 
 @enduml

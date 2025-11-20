@@ -20,21 +20,19 @@ public with sharing class ContactTriggerHelper {
                     stripeCustomersForProcess.add(customer);
                 }
             }
-            // Loop through each Customer
-            for (Contact filteredCustomer : stripeCustomersForProcess) {
-                // Enqueue the callout
+            // Enqueue a single batch job for all customers instead of one per customer
+            if (!stripeCustomersForProcess.isEmpty()) {
                 try {
-                    StripeCalloutQueueable callout = new StripeCalloutQueueable(
-                        filteredCustomer.Id,
-                        filteredCustomer.FirstName + ' ' + filteredCustomer.LastName,
-                        filteredCustomer.Email,
-                        filteredCustomer.Phone
-                    );
+                    StripeCalloutQueueable callout = new StripeCalloutQueueable(stripeCustomersForProcess);
                     if (!Test.isRunningTest()) {
                         System.enqueueJob(callout);
+                        Logger.info('Enqueued batch job for ' + stripeCustomersForProcess.size() + ' customers')
+                            .addTag('ContactTriggerHelper')
+                            .addTag('Batch-Processing');
+                        Logger.saveLog();
                     }
                 } catch (Exception ex) {
-                    Logger.error('Failed to make callout: ', ex);
+                    Logger.error('Failed to enqueue batch callout: ', ex);
                     Logger.saveLog();
                 }
             }
@@ -121,19 +119,27 @@ public with sharing class ContactTriggerHelper {
     /**
      * @description Queueable class for async Stripe Customer updates.
      *              Processes Contact updates and syncs them to Stripe API using callouts.
-     *              Includes comprehensive error handling and logging for each update operation.
+     *              Includes comprehensive error handling, logging, and retry logic with exponential backoff.
      */
     public class StripeCustomerUpdateQueueable implements Queueable, Database.AllowsCallouts {
         private List<Contact> contactsToUpdate;
+        private Map<Id, Integer> contactRetryCount;
 
         public StripeCustomerUpdateQueueable(List<Contact> contacts) {
+            this(contacts, new Map<Id, Integer>());
+        }
+
+        public StripeCustomerUpdateQueueable(List<Contact> contacts, Map<Id, Integer> retryCountMap) {
             this.contactsToUpdate = contacts;
+            this.contactRetryCount = retryCountMap;
         }
 
         public void execute(QueueableContext context) {
             Integer successCount = 0;
             Integer failureCount = 0;
             List<Contact> contactsToUpdateSalesforce = new List<Contact>();
+            List<Contact> contactsToRetry = new List<Contact>();
+            Map<Id, Integer> newRetryCountMap = new Map<Id, Integer>();
 
             for (Contact cont : contactsToUpdate) {
                 try {
@@ -167,6 +173,29 @@ public with sharing class ContactTriggerHelper {
                     Logger.saveLog();
 
                     successCount++;
+                } catch (StripeException ex) {
+                    // Get current retry count for this contact
+                    Integer currentRetryCount = contactRetryCount.get(cont.Id) != null ? contactRetryCount.get(cont.Id) : 0;
+
+                    // Check if this error is retryable and we haven't exceeded max retries
+                    if (ex.isRetryable() && currentRetryCount < StripeAPIService.MAX_RETRY_COUNT) {
+                        contactsToRetry.add(cont);
+                        newRetryCountMap.put(cont.Id, currentRetryCount + 1);
+
+                        Logger.warn('Retryable error for Contact: ' + cont.Id + '. Will retry (attempt ' +
+                                  (currentRetryCount + 1) + ' of ' + StripeAPIService.MAX_RETRY_COUNT + ')')
+                            .setMessage('Stripe Customer ID: ' + cont.Stripe_Customer_ID__c + ', Error: ' + ex.getDetailedMessage())
+                            .addTag('ContactTriggerHelper')
+                            .addTag('Stripe-Update-Retry');
+                        Logger.saveLog();
+                    } else {
+                        failureCount++;
+                        Logger.error('Failed to update Stripe Customer for Contact: ' + cont.Id + ' (max retries exceeded or not retryable)', ex)
+                            .setMessage('Stripe Customer ID: ' + cont.Stripe_Customer_ID__c + ', Error: ' + ex.getDetailedMessage())
+                            .addTag('ContactTriggerHelper')
+                            .addTag('Stripe-Update-Error');
+                        Logger.saveLog();
+                    }
                 } catch (Exception ex) {
                     failureCount++;
                     Logger.error('Failed to update Stripe Customer for Contact: ' + cont.Id, ex)
@@ -200,8 +229,31 @@ public with sharing class ContactTriggerHelper {
                 }
             }
 
+            // Re-enqueue contacts that need retry with exponential backoff
+            if (!contactsToRetry.isEmpty()) {
+                // Calculate delay based on the maximum retry count in the batch
+                Integer maxRetryCount = 0;
+                for (Integer retryCount : newRetryCountMap.values()) {
+                    if (retryCount > maxRetryCount) {
+                        maxRetryCount = retryCount;
+                    }
+                }
+
+                // Calculate exponential backoff delay in minutes
+                Integer delayMinutes = (Integer)(Math.pow(2, maxRetryCount - 1) * StripeAPIService.BASE_DELAY_MINUTES);
+
+                Logger.info('Re-enqueueing ' + contactsToRetry.size() + ' contacts for retry with ' + delayMinutes + ' minute delay')
+                    .addTag('ContactTriggerHelper')
+                    .addTag('Stripe-Retry-Enqueue');
+                Logger.saveLog();
+
+                // Re-enqueue with delay
+                StripeCustomerUpdateQueueable retryJob = new StripeCustomerUpdateQueueable(contactsToRetry, newRetryCountMap);
+                System.enqueueJob(retryJob, delayMinutes);
+            }
+
             Logger.info('Completed Stripe Customer updates (Contact records now store all customer data)')
-                .setMessage('Success: ' + successCount + ', Failures: ' + failureCount)
+                .setMessage('Success: ' + successCount + ', Failures: ' + failureCount + ', Retries: ' + contactsToRetry.size())
                 .addTag('ContactTriggerHelper')
                 .addTag('Stripe-Sync-Complete');
             Logger.saveLog();

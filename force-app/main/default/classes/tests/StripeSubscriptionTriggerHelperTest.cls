@@ -128,9 +128,10 @@ public class StripeSubscriptionTriggerHelperTest {
         }
     }
     @IsTest
-    static void createPricingPlansUponSelection(){
+    static void processStripeSubscriptionToCreateSession_createSessionInStripe_success(){
         User testUser = getTestUser();
         System.runAs(testUser){
+            Test.setMock(HttpCalloutMock.class, new StripeAPISessionSuccessMock());
             Contact customerContact = new Contact(
                 FirstName = 'Test',
                 LastName = 'Testov',
@@ -146,24 +147,28 @@ public class StripeSubscriptionTriggerHelperTest {
                 Sync_Status__c = 'Completed'
             );
             insert subscriptionRec;
-            subscriptionRec.PricingPlans__c = 'Basic_Week';
+            subscriptionRec = [SELECT Id, Stripe_Price_ID__c, StripeCustomerId__c, Sync_Status__c
+                                FROM Stripe_Subscription__c
+                                WHERE Id = :subscriptionRec.Id];
+            StripeCalloutQueueable queueable = new StripeCalloutQueueable(
+                subscriptionRec.StripeCustomerId__c,
+                subscriptionRec.Stripe_Price_ID__c,
+                subscriptionRec.Id
+            );
             Test.startTest();
-            update subscriptionRec;
+            System.enqueueJob(queueable);
             Test.stopTest();
-            Pricing_Plan__c result = [SELECT Name, Amount__c, Currency__c, Recurrency_Type__c
-                                            FROM Pricing_Plan__c
-                                            WHERE Stripe_Subscription__c =: subscriptionRec.Id];
-            Assert.areNotEqual(null, result.Name,
-                                    'Name was assigned');
-            Assert.areNotEqual(null, result.Amount__c,
-                                    'Amount__c was assigned');
-            Assert.areNotEqual(null, result.Currency__c,
-                                    'Currency__c was assigned');
-            Assert.areNotEqual(null, result.Recurrency_Type__c,
-                                    'Recurrency_Type__c was assigned');
+            Stripe_Subscription__c result = [SELECT Stripe_Checkout_Session_ID__c, Sync_Status__c, Checkout_URL__c
+                                                FROM Stripe_Subscription__c
+                                                WHERE Id =: subscriptionRec.Id];
+            Assert.areEqual('cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM',
+                                result.Stripe_Checkout_Session_ID__c,
+                                'Stripe_Subscription_ID__c was assigned');
+            Assert.areNotEqual(null, result.Checkout_URL__c, 
+                                    'Checkout_URL__c was also updated');
+
         }
     }
-
     // ========== High Priority Error Handling Tests ==========
 
     /**
@@ -186,11 +191,11 @@ public class StripeSubscriptionTriggerHelperTest {
     }
 
     /**
-     * Test processStripeSubscriptionAfterUpdate with missing Stripe_Price_ID__c
+     * Test processStripeSubscriptionAfterUpdate with missing Pricing_Plan__c
      * Verifies that subscriptions without required fields are skipped
      */
     @IsTest
-    static void processStripeSubscriptionAfterUpdate_missingPriceId_skipped() {
+    static void processStripeSubscriptionAfterUpdate_missingPricingPlan_skipped() {
         System.runAs(getTestUser()) {
             Contact customerContact = new Contact(
                 FirstName = 'Test',
@@ -202,11 +207,11 @@ public class StripeSubscriptionTriggerHelperTest {
             );
             insert customerContact;
 
-            // Create subscription without Stripe_Price_ID__c
+            // Create subscription without Pricing_Plan__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
                 Contact__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
-                // Missing Stripe_Price_ID__c
+                // Missing Pricing_Plan__c
             );
 
             Test.startTest();
@@ -217,36 +222,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Stripe_Subscription__c result = [SELECT Stripe_Subscription_ID__c, Sync_Status__c
                                                 FROM Stripe_Subscription__c WHERE Id = :subscriptionRec.Id];
             Assert.areEqual(null, result.Stripe_Subscription_ID__c,
-                'Subscription should not be processed without Price ID');
-        }
-    }
-
-    /**
-     * Test processStripeSubscriptionAfterUpdate with missing StripeCustomerId__c
-     */
-    @IsTest
-    static void processStripeSubscriptionAfterUpdate_missingCustomerId_skipped() {
-        System.runAs(getTestUser()) {
-            // Create subscription without customer
-            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Stripe_Price_ID__c = 'price_test123',
-                Sync_Status__c = 'Send to Stripe'
-                // Missing Contact__c
-            );
-
-            Test.startTest();
-            try {
-                insert subscriptionRec;
-            } catch (Exception ex) {
-                
-            }
-            Test.stopTest();
-
-            // Verify subscription was created but not processed
-            List<Stripe_Subscription__c> result = [SELECT Stripe_Subscription_ID__c
-                                                FROM Stripe_Subscription__c WHERE Id = :subscriptionRec.Id];
-            Assert.areEqual(0, result.size(),
-                'Subscription should not be processed without Customer ID');
+                'Subscription should not be processed without Pricing Plan');
         }
     }
 
@@ -267,8 +243,18 @@ public class StripeSubscriptionTriggerHelperTest {
             );
             insert customerContact;
 
-            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
+            // Create Pricing Plan
+            Pricing_Plan__c pricingPlan = new Pricing_Plan__c(
                 Stripe_Price_ID__c = 'price_test123',
+                ProductName__c = 'Test Product',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
+            );
+            insert pricingPlan;
+
+            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
+                Pricing_Plan__c = pricingPlan.Id,
                 Contact__c = customerContact.Id,
                 Sync_Status__c = 'Send to Stripe'
             );
@@ -301,9 +287,19 @@ public class StripeSubscriptionTriggerHelperTest {
             );
             insert customerContact;
 
+            // Create Pricing Plan
+            Pricing_Plan__c pricingPlan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_test123',
+                ProductName__c = 'Test Product',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
+            );
+            insert pricingPlan;
+
             // Create subscription with existing Stripe_Subscription_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Stripe_Price_ID__c = 'price_test123',
+                Pricing_Plan__c = pricingPlan.Id,
                 Contact__c = customerContact.Id,
                 Stripe_Subscription_ID__c = 'sub_existing123',
                 Sync_Status__c = 'Send to Stripe'
@@ -322,15 +318,15 @@ public class StripeSubscriptionTriggerHelperTest {
     }
 
     /**
-     * Test createPricingPlansUponSelection with null parameters
+     * Test processStripeSubscriptionToCreateSession with null parameters
      */
     @IsTest
-    static void createPricingPlansUponSelection_nullParameters_noError() {
+    static void processStripeSubscriptionToCreateSession_nullParameters_noError() {
         System.runAs(getTestUser()) {
             Test.startTest();
             // Should not throw exception with null parameters
-            StripeSubscriptionTriggerHelper.createPricingPlansUponSelection(null, null);
-            StripeSubscriptionTriggerHelper.createPricingPlansUponSelection(
+            StripeSubscriptionTriggerHelper.processStripeSubscriptionToCreateSession(null, null);
+            StripeSubscriptionTriggerHelper.processStripeSubscriptionToCreateSession(
                 new List<Stripe_Subscription__c>(),
                 new Map<Id, Stripe_Subscription__c>()
             );
@@ -341,85 +337,47 @@ public class StripeSubscriptionTriggerHelperTest {
     }
 
     /**
-     * Test createPricingPlansUponSelection with missing metadata
+     * Test processStripeSubscriptionToCreateSession with missing Stripe_Subscription_ID__c
      */
     @IsTest
-    static void createPricingPlansUponSelection_missingMetadata_noError() {
+    static void processStripeSubscriptionToCreateSession_missingSubscriptionId_skipped() {
         System.runAs(getTestUser()) {
             Contact customerContact = new Contact(
                 FirstName = 'Test',
-                LastName = 'NoMetadata',
-                Email = 'nometadata@example.com',
+                LastName = 'NoSubId',
+                Email = 'nosubid@example.com',
                 Phone = '+1234567890',
-                Stripe_Customer_ID__c = 'cus_nometadata'
+                Stripe_Customer_ID__c = 'cus_nosubid'
             );
             insert customerContact;
 
-            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
+            // Create Pricing Plan
+            Pricing_Plan__c pricingPlan = new Pricing_Plan__c(
                 Stripe_Price_ID__c = 'price_test123',
-                Contact__c = customerContact.Id
+                ProductName__c = 'Test Product',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
             );
-            insert subscriptionRec;
+            insert pricingPlan;
 
-            // Update with a valid picklist value that doesn't have corresponding metadata
-            // Using 'NonExistent_Plan_12345' which has a typo and likely doesn't have metadata
-            subscriptionRec.PricingPlans__c = 'NonExistent_Plan_12345';
-
-            Test.startTest();
-            try{
-                update subscriptionRec;
-            }
-            catch(Exception e){
-                Test.stopTest();
-    
-                // Verify no pricing plan was created
-                List<Pricing_Plan__c> plans = [SELECT Id FROM Pricing_Plan__c
-                                                WHERE Stripe_Subscription__c = :subscriptionRec.Id];
-                Assert.areEqual(0, plans.size(),
-                    'No pricing plan should be created for non-existent metadata');
-            }
-        }
-    }
-
-    /**
-     * Test createPricingPlansUponSelection with unchanged PricingPlans__c
-     */
-    @IsTest
-    static void createPricingPlansUponSelection_unchangedPricingPlans_skipped() {
-        System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(
-                FirstName = 'Test',
-                LastName = 'Unchanged',
-                Email = 'unchanged@example.com',
-                Phone = '+1234567890',
-                Stripe_Customer_ID__c = 'cus_unchanged'
-            );
-            insert customerContact;
-
+            // Create subscription without Stripe_Subscription_ID__c
             Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Stripe_Price_ID__c = 'price_test123',
+                Pricing_Plan__c = pricingPlan.Id,
                 Contact__c = customerContact.Id,
-                PricingPlans__c = 'Basic_Week'
+                Sync_Status__c = 'Completed'
+                // Missing Stripe_Subscription_ID__c
             );
-            insert subscriptionRec;
-
-            // First insert creates pricing plan
-            List<Pricing_Plan__c> initialPlans = [SELECT Id FROM Pricing_Plan__c
-                                                    WHERE Stripe_Subscription__c = :subscriptionRec.Id];
-            Integer initialCount = initialPlans.size();
-
-            // Update something other than PricingPlans__c
-            subscriptionRec.Sync_Status__c = 'Completed';
 
             Test.startTest();
-            update subscriptionRec;
+            insert subscriptionRec;
             Test.stopTest();
 
-            // Verify no additional plans were created
-            List<Pricing_Plan__c> finalPlans = [SELECT Id FROM Pricing_Plan__c
-                                                    WHERE Stripe_Subscription__c = :subscriptionRec.Id];
-            Assert.areEqual(initialCount, finalPlans.size(),
-                'No new pricing plans should be created when PricingPlans__c is unchanged');
+            // Verify session was not created
+            Stripe_Subscription__c result = [SELECT Stripe_Checkout_Session_ID__c
+                                                FROM Stripe_Subscription__c WHERE Id = :subscriptionRec.Id];
+            Assert.areEqual(null, result.Stripe_Checkout_Session_ID__c,
+                'Session should not be created without Subscription ID');
         }
     }
 
@@ -445,11 +403,24 @@ public class StripeSubscriptionTriggerHelperTest {
             }
             insert customers;
 
+            // Create multiple pricing plans
+            List<Pricing_Plan__c> pricingPlans = new List<Pricing_Plan__c>();
+            for (Integer i = 0; i < 3; i++) {
+                pricingPlans.add(new Pricing_Plan__c(
+                    Stripe_Price_ID__c = 'price_bulk' + i,
+                    ProductName__c = 'Bulk Product ' + i,
+                    Amount__c = 100 * (i + 1),
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month'
+                ));
+            }
+            insert pricingPlans;
+
             // Create multiple subscriptions
             List<Stripe_Subscription__c> subscriptions = new List<Stripe_Subscription__c>();
             for (Integer i = 0; i < 3; i++) {
                 subscriptions.add(new Stripe_Subscription__c(
-                    Stripe_Price_ID__c = 'price_bulk' + i,
+                    Pricing_Plan__c = pricingPlans[i].Id,
                     Contact__c = customers[i].Id,
                     Sync_Status__c = 'Send to Stripe'
                 ));

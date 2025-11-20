@@ -103,21 +103,58 @@ class SubscriptionHandler:
                 )
 
         # Update subscription with Stripe subscription ID and completed status
-        salesforce_subscription = SalesforceSubscription(
-            Stripe_Subscription_ID__c=subscription_id,
-            Stripe_Checkout_Session_ID__c=session_id,
-            Stripe_Customer__c=salesforce_customer_id,
-            Sync_Status__c="Completed",
+        # Note: Contact__c is a Master-Detail field and cannot be updated, only set on insert
+        # Check payment status to determine if we should set status to active
+        payment_status = session_data.get("payment_status")
+        logger.info(
+            f"Checkout session payment status: {payment_status}",
+            extra={"session_id": session_id, "payment_status": payment_status}
         )
 
-        # Use update if we found existing record, otherwise upsert
         if salesforce_record_id:
+            # Exclude Contact__c (Master-Detail) from updates - cannot be changed after insert
+            # INCLUDE Stripe_Subscription_ID__c to ensure it gets populated on Salesforce-initiated subscriptions
+            update_data = {
+                "Stripe_Subscription_ID__c": subscription_id,  # Populate the external ID field
+                "Stripe_Checkout_Session_ID__c": session_id,
+                "Sync_Status__c": "Completed"
+            }
+            # Set status based on payment status
+            if payment_status == "paid":
+                update_data["Status__c"] = "active"
+            elif payment_status == "unpaid":
+                update_data["Status__c"] = "unpaid"
+
+            logger.info(
+                f"Updating Salesforce subscription with Stripe subscription ID",
+                extra={
+                    "salesforce_subscription_id": salesforce_record_id,
+                    "stripe_subscription_id": subscription_id,
+                    "session_id": session_id
+                }
+            )
+
             result = await salesforce_service.update_record(
                 sobject_type="Stripe_Subscription__c",
                 record_id=salesforce_record_id,
-                record_data=salesforce_subscription.model_dump(mode="json", exclude_none=True)
+                record_data=update_data
             )
         else:
+            # Include Contact__c only when creating new records
+            # Determine status based on payment status
+            subscription_status = None
+            if payment_status == "paid" or payment_status == "no_payment_required":
+                subscription_status = "active"
+            elif payment_status == "unpaid":
+                subscription_status = "unpaid"
+
+            salesforce_subscription = SalesforceSubscription(
+                Stripe_Subscription_ID__c=subscription_id,
+                Stripe_Checkout_Session_ID__c=session_id,
+                Contact__c=salesforce_customer_id,
+                Status__c=subscription_status,
+                Sync_Status__c="Completed",
+            )
             result = await salesforce_service.upsert_subscription(salesforce_subscription)
 
         logger.info(
@@ -228,6 +265,7 @@ class SubscriptionHandler:
 
         # Look up Salesforce customer ID using Stripe customer ID
         stripe_customer_id = subscription_data.get("customer")
+        stripe_subscription_id = subscription_data["id"]
         salesforce_customer_id = None
 
         if stripe_customer_id:
@@ -255,31 +293,133 @@ class SubscriptionHandler:
                     extra={"stripe_customer_id": stripe_customer_id, "error": str(e)}
                 )
 
-        salesforce_subscription = SalesforceSubscription(
-            Stripe_Subscription_ID__c=subscription_data["id"],
-            Stripe_Customer__c=salesforce_customer_id,
-            Status__c=subscription_data.get("status"),
-            Current_Period_Start__c=datetime.fromtimestamp(
-                subscription_data["current_period_start"]
+        # Check if subscription already exists (prevents duplicates from Salesforce-initiated checkouts)
+        existing_subscription_id = None
+        try:
+            # First, check if we already have this Stripe subscription ID
+            query = (
+                f"SELECT Id, Stripe_Subscription_ID__c, Stripe_Checkout_Session_ID__c "
+                f"FROM Stripe_Subscription__c "
+                f"WHERE Stripe_Subscription_ID__c = '{stripe_subscription_id}' "
+                f"LIMIT 1"
             )
-            if subscription_data.get("current_period_start")
-            else None,
-            Current_Period_End__c=datetime.fromtimestamp(
-                subscription_data["current_period_end"]
+            result = await salesforce_service.query(query)
+            if result.get("records"):
+                existing_subscription_id = result["records"][0]["Id"]
+                logger.info(
+                    f"Found existing subscription by Stripe ID - will update instead of create",
+                    extra={
+                        "stripe_subscription_id": stripe_subscription_id,
+                        "salesforce_subscription_id": existing_subscription_id
+                    }
+                )
+            else:
+                # Check for pending Salesforce-initiated subscription (has Contact but no Stripe subscription ID yet)
+                if salesforce_customer_id:
+                    query = (
+                        f"SELECT Id, Stripe_Checkout_Session_ID__c "
+                        f"FROM Stripe_Subscription__c "
+                        f"WHERE Contact__c = '{salesforce_customer_id}' "
+                        f"AND Stripe_Subscription_ID__c = null "
+                        f"AND Stripe_Checkout_Session_ID__c != null "
+                        f"ORDER BY CreatedDate DESC "
+                        f"LIMIT 1"
+                    )
+                    result = await salesforce_service.query(query)
+                    if result.get("records"):
+                        existing_subscription_id = result["records"][0]["Id"]
+                        logger.info(
+                            f"Found Salesforce-initiated subscription awaiting Stripe sync - will update instead of create",
+                            extra={
+                                "stripe_subscription_id": stripe_subscription_id,
+                                "salesforce_subscription_id": existing_subscription_id,
+                                "checkout_session_id": result["records"][0].get("Stripe_Checkout_Session_ID__c")
+                            }
+                        )
+        except Exception as e:
+            logger.warning(
+                f"Failed to check for existing subscription: {str(e)}",
+                extra={"stripe_subscription_id": stripe_subscription_id, "error": str(e)}
             )
-            if subscription_data.get("current_period_end")
-            else None,
-            Amount__c=price.get("unit_amount", 0) / 100 if price.get("unit_amount") else None,
-            Currency__c=price.get("currency", "").upper(),
-            Stripe_Price_ID__c=price.get("id"),
-        )
 
-        result = await salesforce_service.upsert_subscription(salesforce_subscription)
+        # If we found an existing record, update it instead of upserting
+        if existing_subscription_id:
+            update_data = {
+                "Stripe_Subscription_ID__c": stripe_subscription_id,
+                "Status__c": subscription_data.get("status"),
+                "Current_Period_Start__c": datetime.fromtimestamp(
+                    subscription_data["current_period_start"]
+                ).isoformat() if subscription_data.get("current_period_start") else None,
+                "Current_Period_End__c": datetime.fromtimestamp(
+                    subscription_data["current_period_end"]
+                ).isoformat() if subscription_data.get("current_period_end") else None,
+                "Amount__c": price.get("unit_amount", 0) / 100 if price.get("unit_amount") else None,
+                "Currency__c": price.get("currency", "").upper(),
+                "Stripe_Price_ID__c": price.get("id"),
+            }
+            # Remove None values
+            update_data = {k: v for k, v in update_data.items() if v is not None}
 
-        logger.info(
-            f"Subscription created in Salesforce",
-            extra={"subscription_id": subscription_data["id"]},
-        )
+            logger.info(
+                f"Updating existing subscription with Stripe data",
+                extra={
+                    "stripe_subscription_id": stripe_subscription_id,
+                    "salesforce_subscription_id": existing_subscription_id,
+                    "update_data": update_data
+                }
+            )
+
+            result = await salesforce_service.update_record(
+                sobject_type="Stripe_Subscription__c",
+                record_id=existing_subscription_id,
+                record_data=update_data
+            )
+
+            logger.info(
+                f"Subscription updated in Salesforce (prevented duplicate)",
+                extra={
+                    "stripe_subscription_id": stripe_subscription_id,
+                    "salesforce_subscription_id": existing_subscription_id
+                },
+            )
+        else:
+            # No existing record found - create new one via upsert
+            salesforce_subscription = SalesforceSubscription(
+                Stripe_Subscription_ID__c=stripe_subscription_id,
+                Contact__c=salesforce_customer_id,
+                Status__c=subscription_data.get("status"),
+                Current_Period_Start__c=datetime.fromtimestamp(
+                    subscription_data["current_period_start"]
+                )
+                if subscription_data.get("current_period_start")
+                else None,
+                Current_Period_End__c=datetime.fromtimestamp(
+                    subscription_data["current_period_end"]
+                )
+                if subscription_data.get("current_period_end")
+                else None,
+                Amount__c=price.get("unit_amount", 0) / 100 if price.get("unit_amount") else None,
+                Currency__c=price.get("currency", "").upper(),
+                Stripe_Price_ID__c=price.get("id"),
+            )
+
+            logger.info(
+                f"Creating new subscription in Salesforce",
+                extra={
+                    "stripe_subscription_id": stripe_subscription_id,
+                    "contact_id": salesforce_customer_id
+                }
+            )
+
+            result = await salesforce_service.upsert_subscription(salesforce_subscription)
+
+            logger.info(
+                f"Subscription created in Salesforce",
+                extra={
+                    "stripe_subscription_id": stripe_subscription_id,
+                    "salesforce_result": result
+                },
+            )
 
         return {
             "subscription_id": subscription_data["id"],
@@ -345,7 +485,7 @@ class SubscriptionHandler:
 
         salesforce_subscription = SalesforceSubscription(
             Stripe_Subscription_ID__c=subscription_data["id"],
-            Stripe_Customer__c=salesforce_customer_id,
+            Contact__c=salesforce_customer_id,
             Status__c=subscription_data.get("status"),
             Current_Period_Start__c=datetime.fromtimestamp(
                 subscription_data["current_period_start"]

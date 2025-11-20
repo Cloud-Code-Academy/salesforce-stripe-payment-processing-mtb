@@ -15,6 +15,8 @@ from app.models.salesforce_records import (
     SalesforceContact,
     SalesforceCustomer,
     SalesforcePaymentTransaction,
+    SalesforcePricingPlan,
+    SalesforcePricingTier,
     SalesforceSubscription,
 )
 from app.services.rate_limiter import get_rate_limiter
@@ -446,6 +448,98 @@ class SalesforceService:
             record_data=record_data,
         )
 
+    async def upsert_pricing_plan(
+        self, plan_data: SalesforcePricingPlan
+    ) -> Dict[str, Any]:
+        """
+        Upsert pricing plan record using Stripe_Price_ID__c as external ID.
+
+        Args:
+            plan_data: Pricing plan data model
+
+        Returns:
+            Upsert response with record ID
+        """
+        # Exclude the external ID field from the request body
+        record_data = plan_data.model_dump(mode="json", exclude_none=True)
+        record_data.pop("Stripe_Price_ID__c", None)
+
+        return await self.upsert_record(
+            sobject_type="Pricing_Plan__c",
+            external_id_field="Stripe_Price_ID__c",
+            external_id_value=plan_data.Stripe_Price_ID__c,
+            record_data=record_data,
+        )
+
+    async def create_pricing_tier(
+        self, tier_data: SalesforcePricingTier
+    ) -> Dict[str, Any]:
+        """
+        Create pricing tier record.
+
+        Pricing tiers don't have external IDs, so we use regular create.
+        They are children of Pricing_Plan__c via Master-Detail relationship.
+
+        Args:
+            tier_data: Pricing tier data model
+
+        Returns:
+            Create response with record ID
+        """
+        record_data = tier_data.model_dump(mode="json", exclude_none=True)
+
+        return await self.create_record(
+            sobject_type="Pricing_Tier__c",
+            record_data=record_data,
+        )
+
+    async def delete_pricing_tiers_for_plan(
+        self, pricing_plan_id: str
+    ) -> Dict[str, Any]:
+        """
+        Delete all pricing tiers for a given pricing plan.
+
+        Used when updating tier structure for a price.
+
+        Args:
+            pricing_plan_id: Salesforce ID of the Pricing_Plan__c record
+
+        Returns:
+            Deletion results
+        """
+        try:
+            # First, query for all existing tiers
+            query = f"SELECT Id FROM Pricing_Tier__c WHERE Pricing_Plan__c = '{pricing_plan_id}'"
+            result = await self.query(query)
+
+            deleted_count = 0
+            errors = []
+
+            # Delete each tier
+            for tier in result.get("records", []):
+                try:
+                    await self.delete_record("Pricing_Tier__c", tier["Id"])
+                    deleted_count += 1
+                except Exception as e:
+                    errors.append({
+                        "tier_id": tier["Id"],
+                        "error": str(e)
+                    })
+
+            return {
+                "success": len(errors) == 0,
+                "deleted_count": deleted_count,
+                "errors": errors
+            }
+
+        except Exception as e:
+            logger.error(f"Error deleting pricing tiers: {str(e)}")
+            return {
+                "success": False,
+                "deleted_count": 0,
+                "errors": [str(e)]
+            }
+
     async def query(self, soql: str) -> Dict[str, Any]:
         """
         Execute SOQL query.
@@ -659,75 +753,6 @@ class SalesforceService:
         )
 
         return response
-
-    async def create_invoice_and_transaction_composite(
-        self,
-        invoice_data: Dict[str, Any],
-        transaction_data: Dict[str, Any],
-        stripe_invoice_id: str
-    ) -> Dict[str, Any]:
-        """
-        Create both Invoice and Payment Transaction in a single Composite API call.
-        The Payment Transaction will be automatically linked to the Invoice using reference IDs.
-
-        Args:
-            invoice_data: Stripe_Invoice__c record data
-            transaction_data: Payment_Transaction__c record data (without Stripe_Invoice__c field)
-            stripe_invoice_id: Stripe invoice ID for upsert external ID
-
-        Returns:
-            Dictionary with both IDs:
-                {
-                    "invoice_id": "a02xxx000000001",
-                    "transaction_id": "a01xxx000000001"
-                }
-
-        Raises:
-            SalesforceAPIException: If composite request fails
-        """
-        # Remove the Stripe_Invoice__c field if present - we'll use reference instead
-        transaction_data_copy = transaction_data.copy()
-        transaction_data_copy.pop("Stripe_Invoice__c", None)
-
-        # Remove the Stripe_Invoice_ID__c field from invoice_data since it's used in the URL
-        invoice_data_copy = invoice_data.copy()
-        invoice_data_copy.pop("Stripe_Invoice_ID__c", None)
-
-        composite_requests = [
-            {
-                "method": "PATCH",
-                "url": f"/services/data/{self.api_version}/sobjects/Stripe_Invoice__c/Stripe_Invoice_ID__c/{stripe_invoice_id}",
-                "referenceId": "invoice",
-                "body": invoice_data_copy
-            },
-            {
-                "method": "POST",
-                "url": f"/services/data/{self.api_version}/sobjects/Payment_Transaction__c",
-                "referenceId": "transaction",
-                "body": {
-                    **transaction_data_copy,
-                    "Stripe_Invoice__c": "@{invoice.id}"  # Reference to invoice result
-                }
-            }
-        ]
-
-        response = await self.composite_request(composite_requests, all_or_none=True)
-
-        # Extract IDs from response
-        invoice_response = next(
-            (r for r in response["compositeResponse"] if r["referenceId"] == "invoice"),
-            None
-        )
-        transaction_response = next(
-            (r for r in response["compositeResponse"] if r["referenceId"] == "transaction"),
-            None
-        )
-
-        return {
-            "invoice_id": invoice_response["body"]["id"] if invoice_response else None,
-            "transaction_id": transaction_response["body"]["id"] if transaction_response else None,
-            "composite_response": response
-        }
 
     async def close(self) -> None:
         """Close HTTP client"""
