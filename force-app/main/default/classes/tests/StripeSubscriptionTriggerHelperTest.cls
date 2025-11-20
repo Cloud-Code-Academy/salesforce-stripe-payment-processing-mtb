@@ -463,12 +463,12 @@ public class StripeSubscriptionTriggerHelperTest {
             insert subscription;
 
             Test.startTest();
-            // Update subscription to Active
-            subscription.Status__c = 'Active';
+            // Update subscription to active
+            subscription.Status__c = 'active';
             update subscription;
             Test.stopTest();
 
-            // Verify MRR was calculated (100/30*30.44 ≈ 101.47)
+            // Verify MRR was calculated (100/30*30 = 100)
             Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
             Assert.isNotNull(updatedCustomer.MRR__c, 'MRR should be calculated');
             Assert.isTrue(updatedCustomer.MRR__c > 0, 'MRR should be greater than 0');
@@ -493,7 +493,7 @@ public class StripeSubscriptionTriggerHelperTest {
             // Create active subscription
             Stripe_Subscription__c subscription = new Stripe_Subscription__c(
                 Contact__c = customer.Id,
-                Status__c = 'Active',
+                Status__c = 'active',
                 Amount__c = 150.00,
                 Current_Period_Start__c = Datetime.now(),
                 Current_Period_End__c = Datetime.now().addDays(30)
@@ -530,7 +530,7 @@ public class StripeSubscriptionTriggerHelperTest {
             // Create active subscription
             Stripe_Subscription__c subscription = new Stripe_Subscription__c(
                 Contact__c = customer.Id,
-                Status__c = 'Active',
+                Status__c = 'active',
                 Amount__c = 100.00,
                 Current_Period_Start__c = Datetime.now(),
                 Current_Period_End__c = Datetime.now().addDays(30)
@@ -569,14 +569,14 @@ public class StripeSubscriptionTriggerHelperTest {
             List<Stripe_Subscription__c> subscriptions = new List<Stripe_Subscription__c>{
                 new Stripe_Subscription__c(
                     Contact__c = customer.Id,
-                    Status__c = 'Active',
+                    Status__c = 'active',
                     Amount__c = 100.00,
                     Current_Period_Start__c = Datetime.now(),
                     Current_Period_End__c = Datetime.now().addDays(30)
                 ),
                 new Stripe_Subscription__c(
                     Contact__c = customer.Id,
-                    Status__c = 'Active',
+                    Status__c = 'active',
                     Amount__c = 50.00,
                     Current_Period_Start__c = Datetime.now(),
                     Current_Period_End__c = Datetime.now().addDays(30)
@@ -598,14 +598,15 @@ public class StripeSubscriptionTriggerHelperTest {
                 Current_Period_End__c = Datetime.now().addDays(30)
             );
             insert newSubscription;
-            
-            newSubscription.Status__c = 'Active';
+
+            newSubscription.Status__c = 'active';
             update newSubscription;
             Test.stopTest();
 
-            // Verify MRR includes all three subscriptions
+            // Verify MRR includes all three subscriptions (100 + 50 + 75 = 225)
             Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
-            Assert.areEqual(Integer.valueOf(updatedCustomer.MRR__c), 225, 'MRR should include new subscription');
+            Assert.isNotNull(updatedCustomer.MRR__c, 'MRR should be calculated');
+            Assert.areEqual(225, Integer.valueOf(updatedCustomer.MRR__c), 'MRR should include new subscription');
         }
     }
 
@@ -643,7 +644,7 @@ public class StripeSubscriptionTriggerHelperTest {
             Test.startTest();
             // Bulk activate all subscriptions
             for (Stripe_Subscription__c sub : subscriptions) {
-                sub.Status__c = 'Active';
+                sub.Status__c = 'active';
             }
             update subscriptions;
             Test.stopTest();
@@ -685,7 +686,7 @@ public class StripeSubscriptionTriggerHelperTest {
             insert subscription;
 
             Test.startTest();
-            subscription.Status__c = 'Active';
+            subscription.Status__c = 'active';
             update subscription;
             Test.stopTest();
 
@@ -721,7 +722,7 @@ public class StripeSubscriptionTriggerHelperTest {
             insert subscription;
 
             Test.startTest();
-            subscription.Status__c = 'Active';
+            subscription.Status__c = 'active';
             update subscription;
             Test.stopTest();
 
@@ -750,7 +751,7 @@ public class StripeSubscriptionTriggerHelperTest {
             // Create active subscription
             Stripe_Subscription__c subscription = new Stripe_Subscription__c(
                 Contact__c = customer.Id,
-                Status__c = 'Active',
+                Status__c = 'active',
                 Amount__c = 100.00,
                 Current_Period_Start__c = Datetime.now(),
                 Current_Period_End__c = Datetime.now().addDays(30)
@@ -1151,6 +1152,172 @@ public class StripeSubscriptionTriggerHelperTest {
 
             // Exception should be caught and logged
             Assert.isTrue(true, 'Method should handle FLS exception gracefully');
+        }
+    }
+
+    /**
+     * Test MRR calculation when period start and end dates are the same
+     * This was causing the MRR to be multiplied by 30 incorrectly
+     */
+    @IsTest
+    static void calculateMRR_samePeriodDates_correctMRRCalculated() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'SameDates',
+                Email = 'samedates@example.com',
+                Phone = '+1234567898'
+            );
+            insert customer;
+
+            // Create Pricing Plan with monthly recurrence
+            Pricing_Plan__c monthlyPlan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_monthly_test',
+                ProductName__c = 'Monthly Product',
+                Amount__c = 75,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
+            );
+            insert monthlyPlan;
+
+            // Create subscription with same start and end dates (edge case)
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = monthlyPlan.Id,
+                Status__c = 'active',
+                Amount__c = 75.00,
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now()  // Same as start date
+            );
+            insert subscription;
+
+            Test.startTest();
+            // Force recalculation by updating amount
+            subscription.Amount__c = 75.00;
+            update subscription;
+            Test.stopTest();
+
+            // Verify MRR is correctly calculated as 75 (monthly amount), not 2250 (75 * 30)
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(75.00, updatedCustomer.MRR__c,
+                'MRR should be 75 for monthly subscription, not multiplied by 30');
+        }
+    }
+
+    /**
+     * Test MRR calculation with different recurrency types
+     */
+    @IsTest
+    static void calculateMRR_differentRecurrencyTypes_correctMRRCalculated() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'MultiRecurrency',
+                Email = 'multirecurrency@example.com',
+                Phone = '+1234567899'
+            );
+            insert customer;
+
+            // Create Pricing Plans with different recurrency types
+            List<Pricing_Plan__c> pricingPlans = new List<Pricing_Plan__c>{
+                new Pricing_Plan__c(
+                    Stripe_Price_ID__c = 'price_monthly',
+                    ProductName__c = 'Monthly Product',
+                    Amount__c = 100,
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'month'
+                ),
+                new Pricing_Plan__c(
+                    Stripe_Price_ID__c = 'price_yearly',
+                    ProductName__c = 'Yearly Product',
+                    Amount__c = 1200,
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'year'
+                ),
+                new Pricing_Plan__c(
+                    Stripe_Price_ID__c = 'price_weekly',
+                    ProductName__c = 'Weekly Product',
+                    Amount__c = 10,
+                    Currency__c = 'usd',
+                    Recurrency_Type__c = 'week'
+                )
+            };
+            insert pricingPlans;
+
+            // Create subscriptions with different billing intervals
+            List<Stripe_Subscription__c> subscriptions = new List<Stripe_Subscription__c>{
+                new Stripe_Subscription__c(
+                    Contact__c = customer.Id,
+                    Pricing_Plan__c = pricingPlans[0].Id,
+                    Status__c = 'active',
+                    Amount__c = 100.00,  // Monthly: $100/month = $100 MRR
+                    Current_Period_Start__c = Datetime.now(),
+                    Current_Period_End__c = Datetime.now().addDays(30)
+                ),
+                new Stripe_Subscription__c(
+                    Contact__c = customer.Id,
+                    Pricing_Plan__c = pricingPlans[1].Id,
+                    Status__c = 'active',
+                    Amount__c = 1200.00,  // Yearly: $1200/year = $100 MRR
+                    Current_Period_Start__c = Datetime.now(),
+                    Current_Period_End__c = Datetime.now().addDays(365)
+                ),
+                new Stripe_Subscription__c(
+                    Contact__c = customer.Id,
+                    Pricing_Plan__c = pricingPlans[2].Id,
+                    Status__c = 'active',
+                    Amount__c = 10.00,  // Weekly: $10/week * 4.33 = $43.30 MRR
+                    Current_Period_Start__c = Datetime.now(),
+                    Current_Period_End__c = Datetime.now().addDays(7)
+                )
+            };
+
+            Test.startTest();
+            insert subscriptions;
+            Test.stopTest();
+
+            // Verify MRR is correctly calculated
+            // Monthly: $100 + Yearly: $100 + Weekly: $43.30 = $243.30
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(243.30, updatedCustomer.MRR__c,
+                'MRR should correctly convert different billing intervals to monthly');
+        }
+    }
+
+    /**
+     * Test MRR calculation when pricing plan is missing (fallback to period calculation)
+     */
+    @IsTest
+    static void calculateMRR_noPricingPlan_fallbackToPeriodCalculation() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'NoPlan',
+                Email = 'noplan@example.com',
+                Phone = '+1234567900'
+            );
+            insert customer;
+
+            // Create subscription without pricing plan
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Status__c = 'active',
+                Amount__c = 90.00,
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now().addDays(30)
+            );
+
+            Test.startTest();
+            insert subscription;
+            Test.stopTest();
+
+            // Verify MRR is calculated based on period dates
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(90.00, updatedCustomer.MRR__c,
+                'MRR should use period-based calculation when no pricing plan exists');
         }
     }
 }
