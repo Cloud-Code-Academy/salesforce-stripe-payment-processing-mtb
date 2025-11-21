@@ -13,7 +13,7 @@ public class StripeCalloutQueueableBatchTest {
         testUser = TestDataFactory.createUserWithPermissionSets(
             new List<String>{'Stripe_Customer_Contact_Access', 'Stripe_API_Access',
                             'CustomMetadataAccess', 'Stripe_Integration_User',
-                            'PricingPlanAndPricingTier', 'StripeSubscription'}
+                            'PricingPlanAndPricingTier', 'StripeSubscription', 'Stripe_Subscription_Access'}
         );
     }
 

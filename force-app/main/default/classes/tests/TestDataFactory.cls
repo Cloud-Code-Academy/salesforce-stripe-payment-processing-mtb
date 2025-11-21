@@ -25,10 +25,17 @@ public class TestDataFactory {
 
         // Assign the specified permission set
         List<PermissionSet> pss = [
-            SELECT Id
+            SELECT Id, Name
             FROM PermissionSet
             WHERE Name = :permSetNames
         ];
+
+        // Verify permission sets were found
+        if (pss.isEmpty()) {
+            System.debug('WARNING: No permission sets found for names: ' + permSetNames);
+        } else {
+            System.debug('Found ' + pss.size() + ' permission sets: ' + pss);
+        }
 
         List<PermissionSetAssignment> psas = new List<PermissionSetAssignment>();
 
@@ -39,8 +46,12 @@ public class TestDataFactory {
             );
             psas.add(psa);
         }
+
         // Insert Permission Set Assignments
-        insert psas;
+        if (!psas.isEmpty()) {
+            insert psas;
+            System.debug('Assigned ' + psas.size() + ' permission sets to user: ' + u.Email);
+        }
 
         return u;
     }

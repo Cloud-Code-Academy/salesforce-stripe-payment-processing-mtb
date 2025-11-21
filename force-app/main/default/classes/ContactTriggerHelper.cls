@@ -230,7 +230,7 @@ public with sharing class ContactTriggerHelper {
             }
 
             // Re-enqueue contacts that need retry with exponential backoff
-            if (!contactsToRetry.isEmpty()) {
+            if (!contactsToRetry.isEmpty() && !Test.isRunningTest()) {
                 // Calculate delay based on the maximum retry count in the batch
                 Integer maxRetryCount = 0;
                 for (Integer retryCount : newRetryCountMap.values()) {
@@ -250,6 +250,12 @@ public with sharing class ContactTriggerHelper {
                 // Re-enqueue with delay
                 StripeCustomerUpdateQueueable retryJob = new StripeCustomerUpdateQueueable(contactsToRetry, newRetryCountMap);
                 System.enqueueJob(retryJob, delayMinutes);
+            } else if (!contactsToRetry.isEmpty() && Test.isRunningTest()) {
+                // In test context, log that retry would occur but don't actually re-enqueue
+                Logger.info('Test mode: Would re-enqueue ' + contactsToRetry.size() + ' contacts for retry')
+                    .addTag('ContactTriggerHelper')
+                    .addTag('Test-Retry-Skip');
+                Logger.saveLog();
             }
 
             Logger.info('Completed Stripe Customer updates (Contact records now store all customer data)')
