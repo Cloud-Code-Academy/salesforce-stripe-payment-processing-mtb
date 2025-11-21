@@ -277,7 +277,7 @@ public without sharing class StripeInvoiceTriggerHelper {
 
             try {
                 if (!tasksToCreate.isEmpty()) {
-                    insert as user tasksToCreate;
+                    insert tasksToCreate;
                 }
             } catch (Exception e) {
                 Logger.error('Failed to create follow-up tasks', e);
@@ -401,7 +401,7 @@ public without sharing class StripeInvoiceTriggerHelper {
 
             try {
                 if (!customersToUpdate.isEmpty()) {
-                    update as user customersToUpdate;
+                    update customersToUpdate;
                 }
             } catch (Exception e) {
                 Logger.error('Failed to update customer health scores', e);
@@ -527,7 +527,7 @@ public without sharing class StripeInvoiceTriggerHelper {
             }
             try {
                 if (!customersToUpdate.isEmpty()) {
-                    update as user customersToUpdate;
+                    update customersToUpdate;
                 }
             } catch (Exception e) {
                 Logger.error('Failed to update customer churn risk', e);

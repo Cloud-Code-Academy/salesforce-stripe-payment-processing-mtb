@@ -48,14 +48,11 @@ public class StripeChainedCalloutQueueableTest {
         System.runAs(testUser){
             // Set mock for HTTP callout
             Test.setMock(HttpCalloutMock.class, new StripeAPIPaymentMethodSuccessMock());
-            Contact testContact = new Contact(
-                FirstName = 'Test',
-                LastName = 'Testov',
-                Email = 'test2@example.com',
-                Phone = '+1234567892',
-                Stripe_Customer_ID__c = 'cus_existing123'
-            );
-            insert testContact;
+
+            // Query existing test contact instead of creating new one to avoid duplicates
+            Contact testContact = [SELECT Id FROM Contact LIMIT 1];
+            testContact.Stripe_Customer_ID__c = 'cus_existing' + DateTime.now().getTime();
+            update testContact;
             StripeChainedCalloutQueueable callout = new StripeChainedCalloutQueueable(
                 'cus_THZzLMvNDK5uWm', testContact.Id
             );
@@ -114,9 +111,13 @@ public class StripeChainedCalloutQueueableTest {
             // Set mock for HTTP callout
             Test.setMock(HttpCalloutMock.class, new StripeAPIPriceSuccessMock());
 
-            // Create Stripe Subscription
+            // Use existing test contact
+            Contact testContact = [SELECT Id FROM Contact LIMIT 1];
+
+            // Create Stripe Subscription with Contact
             Stripe_Subscription__c subscription = new Stripe_Subscription__c(
-                Product_Plan_Name__c = 'Test Product'
+                Product_Plan_Name__c = 'Test Product',
+                Contact__c = testContact.Id
             );
             insert subscription;
 
@@ -124,7 +125,7 @@ public class StripeChainedCalloutQueueableTest {
             Pricing_Plan__c pricePlan = new Pricing_Plan__c(
                 ProductName__c = 'Test Product',
                 Currency__c = 'usd',
-                // Recurrency_Type__c = 'month',
+                Recurrency_Type__c = 'month',
                 Amount__c = 1000
             );
             insert pricePlan;
@@ -185,10 +186,14 @@ public class StripeChainedCalloutQueueableTest {
             // Set mock for HTTP callout failure
             Test.setMock(HttpCalloutMock.class, new StripeAPIFailureMock(400));
 
-            // Create Pricing Plan
+            // Use existing test contact
+            Contact testContact = [SELECT Id FROM Contact LIMIT 1];
+
+            // Create Pricing Plan with all required fields
             Pricing_Plan__c pricePlan = new Pricing_Plan__c(
+                ProductName__c = 'Test Product',
                 Currency__c = 'usd',
-                // Recurrency_Type__c = 'month',
+                Recurrency_Type__c = 'month',
                 Amount__c = 1000
             );
             insert pricePlan;

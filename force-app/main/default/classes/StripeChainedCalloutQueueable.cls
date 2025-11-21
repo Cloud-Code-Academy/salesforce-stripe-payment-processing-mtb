@@ -120,9 +120,15 @@ public class StripeChainedCalloutQueueable implements Queueable, Database.Allows
                 .addTag('Stripe-Retry');
             Logger.saveLog();
 
-            // Re-enqueue the job with delay
-            StripeChainedCalloutQueueable retryJob = createRetryJob();
-            System.enqueueJob(retryJob, delayMinutes);
+            // Re-enqueue the job with delay (skip in test context to avoid infinite recursion)
+            if (!Test.isRunningTest()) {
+                StripeChainedCalloutQueueable retryJob = createRetryJob();
+                System.enqueueJob(retryJob, delayMinutes);
+            } else {
+                Logger.info('Test mode: Would re-enqueue job for retry after ' + delayMinutes + ' minutes')
+                    .addTag('Test-Retry-Skip');
+                Logger.saveLog();
+            }
         } else {
             // Max retries reached or not retryable - log and give up
             Logger.error(errorContext + '. Max retries reached or error not retryable: ' + ex.getDetailedMessage())

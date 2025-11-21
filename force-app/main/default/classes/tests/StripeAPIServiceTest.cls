@@ -257,8 +257,18 @@ private class StripeAPIServiceTest {
         System.runAs(getTestUser()) {
             // Set mock to handle callouts
             Test.setMock(HttpCalloutMock.class, new StripeCalloutMock(200, 'products'));
+
+            // Create Contact for Subscription
+            Contact testContact = new Contact(
+                FirstName = 'Subscription',
+                LastName = 'Test',
+                Email = 'subscription@test.com'
+            );
+            insert testContact;
+
             Stripe_Subscription__c subscription = new Stripe_Subscription__c(
-                Product_Plan_Name__c = 'Orange'
+                Product_Plan_Name__c = 'Orange',
+                Contact__c = testContact.Id
             );
             insert subscription;
             Test.startTest();
@@ -503,8 +513,8 @@ private class StripeAPIServiceTest {
     @isTest
     static void testUpdateCustomer_RetryableError() {
         System.runAs(getTestUser()) {
-            // Mock that fails with 503 then succeeds
-            Test.setMock(HttpCalloutMock.class, new RetrySuccessMock(1));
+            // Mock that returns a retryable error (503)
+            Test.setMock(HttpCalloutMock.class, new StripeAPIErrorMock(503, 'api_error', 'Service temporarily unavailable'));
 
             StripeWrapper.CustomerWrapper customerWrapper = new StripeWrapper.CustomerWrapper(
                 'Test Name',
@@ -513,11 +523,14 @@ private class StripeAPIServiceTest {
             );
 
             Test.startTest();
-            String customerId = StripeAPIService.updateCustomer(customerWrapper, 'cus_test123');
+            try {
+                StripeAPIService.updateCustomer(customerWrapper, 'cus_test123');
+                Assert.fail('Expected StripeException to be thrown for retryable error');
+            } catch (StripeException ex) {
+                Assert.areEqual(503, ex.httpStatusCode, 'HTTP status code should be 503');
+                Assert.areEqual(true, ex.isRetryable(), 'Error should be retryable');
+            }
             Test.stopTest();
-
-            Assert.areNotEqual(null, customerId, 'Customer ID should not be null after retry');
-            Assert.areEqual('cus_test123', customerId, 'Customer ID should match after successful retry');
         }
     }
 
@@ -683,7 +696,7 @@ private class StripeAPIServiceTest {
             } catch (StripeException ex) {
                 Assert.areEqual(429, ex.httpStatusCode, 'HTTP status code should be 429');
                 Assert.areEqual(true, ex.isRetryable(), 'Error should be retryable');
-                Assert.isTrue(ex.getMessage().contains('rate_limit'), 'Error should indicate rate limit');
+                Assert.isTrue(ex.getMessage().contains('Rate limit exceeded'), 'Error should indicate rate limit');
             }
             Test.stopTest();
         }

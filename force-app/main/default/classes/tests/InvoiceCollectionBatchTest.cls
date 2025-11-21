@@ -7,7 +7,7 @@ private class InvoiceCollectionBatchTest {
     static void setupTestData() {
         // Create test user with required permission sets
         testUser = TestDataFactory.createUserWithPermissionSets(
-            new List<String>{'Stripe_Customer_Contact_Access', 'Stripe_API_Access'}
+            new List<String>{'Stripe_Customer_Contact_Access', 'Stripe_API_Access', 'Stripe_Subscription_Access'}
         );
 
         // Run as test user to create test data
