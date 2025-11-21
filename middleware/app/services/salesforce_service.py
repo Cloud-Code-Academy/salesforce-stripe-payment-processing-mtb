@@ -414,9 +414,9 @@ class SalesforceService:
         Returns:
             Upsert response
         """
-        # Exclude the external ID field from the request body
+        # Include ALL fields in the request body, including the external ID
+        # Salesforce requires the external ID field in the body for INSERT operations
         record_data = transaction_data.model_dump(mode="json", exclude_none=True)
-        record_data.pop("Stripe_Payment_Intent_ID__c", None)
 
         return await self.upsert_record(
             sobject_type="Payment_Transaction__c",

@@ -478,6 +478,27 @@ class PaymentHandler:
             payment_method_types = payment_intent.get("payment_method_types", [])
             payment_method_type = payment_method_types[0] if payment_method_types else None
 
+        # Log payment_intent status for debugging
+        if not payment_intent:
+            logger.warning(
+                "No payment_intent in invoice - Stripe_Payment_Intent_ID__c will be NULL",
+                extra={
+                    "invoice_id": invoice.get("id"),
+                    "subscription_id": subscription_id,
+                    "customer_id": invoice.get("customer")
+                }
+            )
+        else:
+            payment_intent_id = payment_intent if isinstance(payment_intent, str) else payment_intent.get("id")
+            logger.info(
+                "Payment intent found in invoice",
+                extra={
+                    "invoice_id": invoice.get("id"),
+                    "payment_intent_id": payment_intent_id,
+                    "payment_intent_type": "string" if isinstance(payment_intent, str) else "object"
+                }
+            )
+
         # Extract period dates with fallbacks for different Stripe API versions
         # Similar to subscription_id, period dates may be in different locations
         period_start = invoice.get("period_start")  # Try top-level first (old API)
@@ -983,12 +1004,12 @@ class PaymentHandler:
         # Create transaction using upsert with dynamically selected external ID
         # When payment_intent_id is NULL, uses Stripe_Invoice_ID__c to ensure idempotency
         # and prevent Master-Detail constraint violations
+        # IMPORTANT: Include the external ID field in the record_data so Salesforce populates it on INSERT
         result = await salesforce_service.upsert_record(
             sobject_type="Payment_Transaction__c",
             external_id_field=external_id_field,
             external_id_value=external_id_value,
-            record_data={k: v for k, v in transaction_record_data.items()
-                        if k != external_id_field}  # Exclude the external ID field being used
+            record_data=transaction_record_data  # Include ALL fields including external ID
         )
 
         transaction_id = result.get("id")
