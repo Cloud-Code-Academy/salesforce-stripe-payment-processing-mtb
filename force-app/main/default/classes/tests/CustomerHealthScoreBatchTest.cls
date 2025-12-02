@@ -29,12 +29,27 @@ private class CustomerHealthScoreBatchTest {
     static void testCustomerHealthScoreBatch_PerfectPaymentHistory() {
         System.runAs(getTestUser()) {
             // Get test contacts
-            List<Contact> contacts = [SELECT Id FROM Contact WHERE Stripe_Customer_ID__c != null];
+            List<Contact> contacts = [SELECT Id, Stripe_Customer_ID__c FROM Contact WHERE Stripe_Customer_ID__c != null];
+            Assert.areEqual(3, contacts.size(), 'Should have 3 test contacts');
 
             // Create subscriptions and paid invoices for each contact
             for (Contact contact : contacts) {
                 Stripe_Subscription__c subscription = TestDataFactory.createStripeSubscriptions(1, contact.Id)[0];
                 TestDataFactory.createStripeInvoices(5, subscription.Id, 'paid');
+            }
+
+            // Verify invoices were created correctly
+            List<Stripe_Invoice__c> allInvoices = [
+                SELECT Id, Contact__c, Contact__r.Stripe_Customer_ID__c, Status__c
+                FROM Stripe_Invoice__c
+                WHERE Contact__c IN :contacts
+            ];
+            Assert.areEqual(15, allInvoices.size(), 'Should have 15 invoices total (5 per contact)');
+
+            // Verify all invoices have Contact__c set
+            for (Stripe_Invoice__c inv : allInvoices) {
+                Assert.isNotNull(inv.Contact__c, 'Invoice should have Contact__c field set');
+                Assert.isNotNull(inv.Contact__r.Stripe_Customer_ID__c, 'Contact should have Stripe_Customer_ID__c');
             }
 
             // Run batch job
@@ -66,6 +81,7 @@ private class CustomerHealthScoreBatchTest {
 
             Stripe_Invoice__c failedInvoice = new Stripe_Invoice__c(
                 Stripe_Subscription__c = subscription.Id,
+                Contact__c = contact.Id,
                 Stripe_Invoice_ID__c = 'inv_failed',
                 Amount__c = 29.99,
                 Status__c = 'uncollectible',
@@ -75,6 +91,7 @@ private class CustomerHealthScoreBatchTest {
 
             Stripe_Invoice__c exhaustedInvoice = new Stripe_Invoice__c(
                 Stripe_Subscription__c = subscription.Id,
+                Contact__c = contact.Id,
                 Stripe_Invoice_ID__c = 'inv_exhausted',
                 Amount__c = 29.99,
                 Status__c = 'open',
@@ -166,6 +183,7 @@ private class CustomerHealthScoreBatchTest {
                 for (Integer i = 0; i < 10; i++) {
                     Stripe_Invoice__c invoice = new Stripe_Invoice__c(
                         Stripe_Subscription__c = subscription.Id,
+                        Contact__c = contact.Id,
                         Stripe_Invoice_ID__c = 'inv_' + contact.Id + '_' + i,
                         Amount__c = 29.99,
                         Status__c = Math.mod(i, 3) == 0 ? 'uncollectible' : 'paid',
