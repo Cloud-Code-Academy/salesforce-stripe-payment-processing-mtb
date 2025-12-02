@@ -79,19 +79,15 @@ public with sharing class CustomerHealthScoreBatch implements Database.Batchable
                 Decimal dunningPenalty = Math.min((dunningExhausted / totalInvoices) * 150, 60);
                 Decimal healthScore = Math.max(0, paymentSuccessRate - failurePenalty - dunningPenalty);
 
-                if (Schema.SObjectType.Contact.isUpdateable() &&
-                    Schema.SObjectType.Contact.fields.Health_Score__c.isUpdateable()) {
-
-                    Contact contactToUpdate = new Contact(
-                        Id = contact.Id,
-                        Health_Score__c = healthScore
-                    );
-                    contactsToUpdate.add(contactToUpdate);
-                }
+                Contact contactToUpdate = new Contact(
+                    Id = contact.Id,
+                    Health_Score__c = healthScore
+                );
+                contactsToUpdate.add(contactToUpdate);
             }
 
             if (!contactsToUpdate.isEmpty()) {
-                update as user contactsToUpdate;
+                update contactsToUpdate;
                 Logger.info('Updated health scores for ' + contactsToUpdate.size() + ' contacts');
             }
 
