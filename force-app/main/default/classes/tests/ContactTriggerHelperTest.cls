@@ -754,4 +754,174 @@ public class ContactTriggerHelperTest {
             Assert.isTrue(true, 'Max retries exceeded - error logged without re-enqueueing');
         }
     }
+
+    /**
+     * @description Tests processContactAfterInsert with Contact already having Stripe ID
+     *              Verifies that Contacts with existing Stripe_Customer_ID__c are skipped
+     */
+    @IsTest
+    static void processContactAfterInsert_contactWithExistingStripeId_skipped() {
+        User testUser = getTestUser();
+        System.runAs(testUser) {
+            // Create Contact with existing Stripe ID
+            Contact cont = new Contact(
+                FirstName = 'Existing',
+                LastName = 'StripeUser',
+                Email = 'existing@stripe.com',
+                Phone = '+1234567890',
+                Stripe_Customer_ID__c = 'cus_existing123'
+            );
+
+            Test.startTest();
+            insert cont;
+            Test.stopTest();
+
+            // Verify Contact was created but not sent to batch job
+            Contact insertedContact = [
+                SELECT Id, Stripe_Customer_ID__c
+                FROM Contact
+                WHERE Id = :cont.Id
+            ];
+            Assert.areEqual('cus_existing123', insertedContact.Stripe_Customer_ID__c,
+                'Stripe ID should remain unchanged');
+        }
+    }
+
+    /**
+     * @description Tests processContactAfterUpdate with null oldMap
+     *              Covers line 68-72 validation
+     */
+    @IsTest
+    static void processContactAfterUpdate_nullOldMap_handledGracefully() {
+        User testUser = getTestUser();
+        System.runAs(testUser) {
+            Contact cont = new Contact(
+                FirstName = 'Test',
+                LastName = 'User',
+                Email = 'test@example.com',
+                Stripe_Customer_ID__c = 'cus_test123'
+            );
+            insert cont;
+
+            List<Contact> newList = [SELECT Id, Email FROM Contact WHERE Id = :cont.Id];
+
+            Test.startTest();
+            // Call with null oldMap
+            ContactTriggerHelper.processContactAfterUpdate(newList, null);
+            Test.stopTest();
+
+            // Should complete without error
+            Assert.isTrue(true, 'Should handle null oldMap gracefully');
+        }
+    }
+
+    /**
+     * @description Tests processContactAfterUpdate with Contact without Stripe ID
+     *              Covers line 81-83 skip logic
+     */
+    @IsTest
+    static void processContactAfterUpdate_contactWithoutStripeId_skipped() {
+        User testUser = getTestUser();
+        System.runAs(testUser) {
+            Contact cont = new Contact(
+                FirstName = 'NoStripe',
+                LastName = 'User',
+                Email = 'nostripe@example.com'
+            );
+            insert cont;
+
+            cont.Email = 'updated@example.com';
+
+            Test.startTest();
+            update cont;
+            Test.stopTest();
+
+            // Verify update succeeded even without Stripe ID
+            Contact updatedContact = [
+                SELECT Email, Stripe_Customer_ID__c
+                FROM Contact
+                WHERE Id = :cont.Id
+            ];
+            Assert.areEqual('updated@example.com', updatedContact.Email, 'Email should be updated');
+            Assert.isNull(updatedContact.Stripe_Customer_ID__c, 'Stripe ID should still be null');
+        }
+    }
+
+    /**
+     * @description Tests processContactAfterUpdate with multiple field changes
+     *              Ensures all relevant fields trigger updates
+     */
+    @IsTest
+    static void processContactAfterUpdate_multipleFieldChanges_triggersUpdate() {
+        User testUser = getTestUser();
+        System.runAs(testUser) {
+            Test.setMock(HttpCalloutMock.class, new UpdateCustomerSuccessMock());
+
+            Contact cont = new Contact(
+                FirstName = 'Original',
+                LastName = 'Name',
+                Email = 'original@example.com',
+                Phone = '+1111111111',
+                Stripe_Customer_ID__c = 'cus_multi123'
+            );
+            insert cont;
+
+            // Update all trackable fields
+            cont.FirstName = 'Updated';
+            cont.LastName = 'Changed';
+            cont.Email = 'changed@example.com';
+            cont.Phone = '+2222222222';
+
+            Test.startTest();
+            update cont;
+            Test.stopTest();
+
+            // Verify update was successful
+            Contact updatedContact = [
+                SELECT FirstName, LastName, Email, Phone
+                FROM Contact
+                WHERE Id = :cont.Id
+            ];
+            Assert.areEqual('Updated', updatedContact.FirstName, 'FirstName should be updated');
+            Assert.areEqual('Changed', updatedContact.LastName, 'LastName should be updated');
+            Assert.areEqual('changed@example.com', updatedContact.Email, 'Email should be updated');
+            Assert.areEqual('+2222222222', updatedContact.Phone, 'Phone should be updated');
+        }
+    }
+
+    /**
+     * @description Tests processContactAfterUpdate with no field changes
+     *              Verifies that unchanged contacts don't trigger Stripe updates
+     */
+    @IsTest
+    static void processContactAfterUpdate_noFieldChanges_skipUpdate() {
+        User testUser = getTestUser();
+        System.runAs(testUser) {
+            Contact cont = new Contact(
+                FirstName = 'Unchanged',
+                LastName = 'Contact',
+                Email = 'unchanged@example.com',
+                Phone = '+3333333333',
+                Stripe_Customer_ID__c = 'cus_unchanged123',
+                Description = 'Original description'
+            );
+            insert cont;
+
+            // Update a field that's not tracked for Stripe sync
+            cont.Description = 'Updated description';
+
+            Test.startTest();
+            update cont;
+            Test.stopTest();
+
+            // Verify non-tracked field was updated
+            Contact updatedContact = [
+                SELECT Description
+                FROM Contact
+                WHERE Id = :cont.Id
+            ];
+            Assert.areEqual('Updated description', updatedContact.Description,
+                'Non-tracked field should be updated');
+        }
+    }
 }

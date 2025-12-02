@@ -412,4 +412,193 @@ private class StripeExceptionTest {
 
         Test.stopTest();
     }
+
+    /**
+     * @description Tests fallback error message for unknown status codes (line 121)
+     */
+    @isTest
+    static void testBuildErrorMessage_UnknownStatusCode() {
+        // Create HTTP response with an unusual status code not handled in buildErrorMessage
+        HttpResponse res = new HttpResponse();
+        res.setStatusCode(418);
+        res.setStatus('I\'m a teapot');
+        res.setBody('');
+
+        Test.startTest();
+        StripeException ex = StripeException.fromHttpResponse(res);
+        Test.stopTest();
+
+        // Should use the fallback message with statusText
+        Assert.isTrue(ex.getMessage().contains('teapot'), 'Should contain status text for unknown status code');
+    }
+
+    /**
+     * @description Tests idempotency_error from response body (line 152)
+     */
+    @isTest
+    static void testIdempotencyException_FromErrorType() {
+        // Create response where idempotency error comes from type, not HTTP code
+        HttpResponse res = new HttpResponse();
+        res.setStatusCode(400);
+        res.setStatus('Bad Request');
+        res.setBody('{"error":{"type":"idempotency_error","message":"Idempotency key used with different request parameters"}}');
+
+        Test.startTest();
+        StripeException ex = StripeException.fromHttpResponse(res);
+        Test.stopTest();
+
+        Assert.isTrue(ex instanceof StripeIdempotencyException, 'Should create IdempotencyException from error type');
+        Assert.areEqual('idempotency_error', ex.errorType, 'Error type should be idempotency_error');
+    }
+
+    /**
+     * @description Tests getUserMessage when errorResponse is null (line 194)
+     */
+    @isTest
+    static void testGetUserMessage_NullErrorResponse() {
+        // Create exception directly without errorResponse
+        StripeException ex = new StripeException('Test error message');
+
+        Test.startTest();
+        String userMessage = ex.getUserMessage();
+        Test.stopTest();
+
+        Assert.areEqual('Test error message', userMessage, 'Should fall back to getMessage() when errorResponse is null');
+    }
+
+    /**
+     * @description Tests StripeWrapper.ErrorResponse.isRetryable() method
+     */
+    @isTest
+    static void testErrorResponse_IsRetryable() {
+        Test.startTest();
+
+        // Test retryable error (api_error)
+        StripeWrapper.ErrorResponse retryableError = new StripeWrapper.ErrorResponse();
+        retryableError.type = 'api_error';
+        Assert.isTrue(retryableError.isRetryable(), 'api_error type should be retryable');
+
+        // Test non-retryable error
+        StripeWrapper.ErrorResponse nonRetryableError = new StripeWrapper.ErrorResponse();
+        nonRetryableError.type = 'card_error';
+        Assert.isFalse(nonRetryableError.isRetryable(), 'card_error type should not be retryable');
+
+        Test.stopTest();
+    }
+
+    /**
+     * @description Tests StripeWrapper.ErrorResponse.isCardError() method
+     */
+    @isTest
+    static void testErrorResponse_IsCardError() {
+        Test.startTest();
+
+        // Test card error
+        StripeWrapper.ErrorResponse cardError = new StripeWrapper.ErrorResponse();
+        cardError.type = 'card_error';
+        Assert.isTrue(cardError.isCardError(), 'card_error type should be identified as card error');
+
+        // Test non-card error
+        StripeWrapper.ErrorResponse apiError = new StripeWrapper.ErrorResponse();
+        apiError.type = 'api_error';
+        Assert.isFalse(apiError.isCardError(), 'api_error type should not be identified as card error');
+
+        Test.stopTest();
+    }
+
+    /**
+     * @description Tests StripeWrapper.ErrorResponse.getUserMessage() method
+     */
+    @isTest
+    static void testErrorResponse_GetUserMessage() {
+        Test.startTest();
+
+        // Test with message present
+        StripeWrapper.ErrorResponse errorWithMessage = new StripeWrapper.ErrorResponse();
+        errorWithMessage.message = 'Your card was declined';
+        Assert.areEqual('Your card was declined', errorWithMessage.getUserMessage(), 'Should return the error message');
+
+        // Test with null message (fallback)
+        StripeWrapper.ErrorResponse errorWithoutMessage = new StripeWrapper.ErrorResponse();
+        Assert.areEqual('An error occurred processing your request. Please try again.',
+            errorWithoutMessage.getUserMessage(), 'Should return generic message when message is null');
+
+        // Test with blank message (fallback)
+        StripeWrapper.ErrorResponse errorWithBlankMessage = new StripeWrapper.ErrorResponse();
+        errorWithBlankMessage.message = '';
+        Assert.areEqual('An error occurred processing your request. Please try again.',
+            errorWithBlankMessage.getUserMessage(), 'Should return generic message when message is blank');
+
+        Test.stopTest();
+    }
+
+    /**
+     * @description Tests StripeWrapper.CustomerWrapper instantiation
+     */
+    @isTest
+    static void testCustomerWrapper() {
+        Test.startTest();
+
+        StripeWrapper.CustomerWrapper customer = new StripeWrapper.CustomerWrapper(
+            'John Doe',
+            'john.doe@example.com',
+            '+1234567890'
+        );
+
+        Assert.areEqual('John Doe', customer.name, 'Customer name should match');
+        Assert.areEqual('john.doe@example.com', customer.email, 'Customer email should match');
+        Assert.areEqual('+1234567890', customer.phone, 'Customer phone should match');
+
+        Test.stopTest();
+    }
+
+    /**
+     * @description Tests StripeWrapper.ProductWrapper instantiation
+     */
+    @isTest
+    static void testProductWrapper() {
+        Test.startTest();
+
+        StripeWrapper.ProductWrapper product = new StripeWrapper.ProductWrapper('Premium Plan');
+
+        Assert.areEqual('Premium Plan', product.name, 'Product name should match');
+
+        Test.stopTest();
+    }
+
+    /**
+     * @description Tests StripeWrapper base class properties
+     */
+    @isTest
+    static void testStripeWrapperProperties() {
+        Test.startTest();
+
+        StripeWrapper wrapper = new StripeWrapper();
+        wrapper.id = 'cus_test123';
+        wrapper.url = 'https://api.stripe.com/v1/customers/cus_test123';
+
+        Assert.areEqual('cus_test123', wrapper.id, 'ID should match');
+        Assert.areEqual('https://api.stripe.com/v1/customers/cus_test123', wrapper.url, 'URL should match');
+
+        Test.stopTest();
+    }
+
+    /**
+     * @description Tests StripeErrorWrapper instantiation
+     */
+    @isTest
+    static void testStripeErrorWrapper() {
+        Test.startTest();
+
+        StripeWrapper.StripeErrorWrapper errorWrapper = new StripeWrapper.StripeErrorWrapper();
+        StripeWrapper.ErrorResponse error = new StripeWrapper.ErrorResponse();
+        error.type = 'card_error';
+        error.message = 'Card declined';
+        errorWrapper.error = error;
+
+        Assert.areEqual('card_error', errorWrapper.error.type, 'Error type should match');
+        Assert.areEqual('Card declined', errorWrapper.error.message, 'Error message should match');
+
+        Test.stopTest();
+    }
 }
