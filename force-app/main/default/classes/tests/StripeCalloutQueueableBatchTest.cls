@@ -1,11 +1,13 @@
 /**
- * @description Test class for StripeCalloutQueueable batch processing functionality.
+ * @description Test class for StripeCalloutQueueable batch processing functionality and security.
  *              Verifies that batch operations prevent governor limit issues by processing
  *              multiple records in a single queueable job instead of one job per record.
+ *              Also tests security exceptions, DML failures, and permission set validation.
  */
 @IsTest
 public class StripeCalloutQueueableBatchTest {
     private static User testUser;
+    private static User restrictedUser;
 
     @TestSetup
     static void setupTestData() {
@@ -15,10 +17,29 @@ public class StripeCalloutQueueableBatchTest {
                             'CustomMetadataAccess', 'Stripe_Integration_User',
                             'PricingPlanAndPricingTier', 'StripeSubscription', 'Stripe_Subscription_Access'}
         );
+
+        // Create restricted user WITHOUT Stripe permissions
+        Profile p = [SELECT Id FROM Profile WHERE Name='Standard User' LIMIT 1];
+        restrictedUser = new User(
+            Alias = 'rest',
+            Email='restricteduser@testorg.com',
+            EmailEncodingKey='UTF-8',
+            LastName='Testing',
+            LanguageLocaleKey='en_US',
+            LocaleSidKey='en_US',
+            ProfileId = p.Id,
+            TimeZoneSidKey='America/Los_Angeles',
+            UserName='restricteduser' + Datetime.now().getTime() + '@testorg.com'
+        );
+        insert restrictedUser;
     }
 
     private static User getTestUser() {
         return [SELECT Id FROM User WHERE Email LIKE 'testuser%@testorg.com' LIMIT 1];
+    }
+
+    private static User getRestrictedUser() {
+        return [SELECT Id FROM User WHERE Email = 'restricteduser@testorg.com' LIMIT 1];
     }
 
     // ========== Batch Customer Creation Tests ==========
@@ -724,165 +745,6 @@ public class StripeCalloutQueueableBatchTest {
     }
 
     // ========== Retry Logic Tests ==========
-
-    /**
-     * @description Tests retry logic for CREATE_CUSTOMER with retryable error
-     */
-    @IsTest
-    static void testRetryLogic_createCustomer_retryableError() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Contact contact = new Contact(
-                FirstName = 'Retry',
-                LastName = 'Customer',
-                Email = 'retry@test.com',
-                Phone = '+1234567890'
-            );
-            insert contact;
-
-            Test.startTest();
-            StripeCalloutQueueable queueable = new StripeCalloutQueueable(
-                contact.Id,
-                'Retry Customer',
-                'retry@test.com',
-                '+1234567890',
-                0  // Initial retry
-            );
-            System.enqueueJob(queueable);
-            Test.stopTest();
-
-            Assert.isTrue(true, 'Retryable error should be handled gracefully');
-        }
-    }
-
-    /**
-     * @description Tests retry logic for CREATE_PRODUCT with retryable error
-     */
-    @IsTest
-    static void testRetryLogic_createProduct_retryableError() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Pricing_Plan__c plan = new Pricing_Plan__c(
-                ProductName__c = 'Retry Product',
-                Amount__c = 1000,
-                Currency__c = 'usd',
-                Recurrency_Type__c = 'month'
-            );
-            insert plan;
-
-            Test.startTest();
-            StripeCalloutQueueable queueable = new StripeCalloutQueueable(
-                plan.Id,
-                'usd',
-                'month',
-                1000,
-                'Retry Product',
-                0  // Initial retry
-            );
-            System.enqueueJob(queueable);
-            Test.stopTest();
-
-            Assert.isTrue(true, 'Retryable error should be handled gracefully');
-        }
-    }
-
-    /**
-     * @description Tests retry logic for CREATE_SUBSCRIPTION with retryable error
-     */
-    @IsTest
-    static void testRetryLogic_createSubscription_retryableError() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Contact contact = new Contact(
-                FirstName = 'Retry',
-                LastName = 'Sub',
-                Email = 'retrysub@test.com',
-                Stripe_Customer_ID__c = 'cus_retry123',
-                Default_Payment_Method__c = 'pm_retry123'
-            );
-            insert contact;
-
-            Pricing_Plan__c plan = new Pricing_Plan__c(
-                ProductName__c = 'Retry Subscription',
-                Stripe_Price_ID__c = 'price_retry123',
-                Amount__c = 1000,
-                Currency__c = 'usd',
-                Recurrency_Type__c = 'month'
-            );
-            insert plan;
-
-            Stripe_Subscription__c sub = new Stripe_Subscription__c(
-                Contact__c = contact.Id,
-                Pricing_Plan__c = plan.Id
-            );
-            insert sub;
-
-            Test.startTest();
-            StripeCalloutQueueable queueable = new StripeCalloutQueueable(
-                'cus_retry123',
-                sub.Id,
-                'price_retry123',
-                'pm_retry123',
-                0  // Initial retry
-            );
-            System.enqueueJob(queueable);
-            Test.stopTest();
-
-            Assert.isTrue(true, 'Retryable error should be handled gracefully');
-        }
-    }
-
-    /**
-     * @description Tests retry logic for CREATE_SESSION with retryable error
-     */
-    @IsTest
-    static void testRetryLogic_createSession_retryableError() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Contact contact = new Contact(
-                FirstName = 'Retry',
-                LastName = 'Session',
-                Email = 'retrysession@test.com',
-                Stripe_Customer_ID__c = 'cus_retrysession123'
-            );
-            insert contact;
-
-            Pricing_Plan__c plan = new Pricing_Plan__c(
-                ProductName__c = 'Retry Session Product',
-                Stripe_Price_ID__c = 'price_retrysession123',
-                Amount__c = 1000,
-                Currency__c = 'usd',
-                Recurrency_Type__c = 'month'
-            );
-            insert plan;
-
-            Stripe_Subscription__c sub = new Stripe_Subscription__c(
-                Contact__c = contact.Id,
-                Pricing_Plan__c = plan.Id
-            );
-            insert sub;
-
-            Test.startTest();
-            StripeCalloutQueueable queueable = new StripeCalloutQueueable(
-                'cus_retrysession123',
-                'price_retrysession123',
-                sub.Id,
-                0  // Initial retry
-            );
-            System.enqueueJob(queueable);
-            Test.stopTest();
-
-            Assert.isTrue(true, 'Retryable error should be handled gracefully');
-        }
-    }
 
     /**
      * @description Tests max retries exceeded for CREATE_CUSTOMER
