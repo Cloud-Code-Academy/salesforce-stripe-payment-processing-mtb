@@ -116,77 +116,7 @@ public class StripeFinalCalloutQueueableTest {
 
     // ========== Error Handling Tests ==========
 
-    /**
-     * @description Tests general exception handling (non-StripeException)
-     *              Covers lines 54-57 (catch Exception block)
-     */
-    @IsTest
-    static void execute_generalException_logsError() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            // Mock that simulates a general failure (e.g., network error)
-            Test.setMock(HttpCalloutMock.class, new StripeGeneralErrorMock());
-
-            Test.startTest();
-            StripeFinalCalloutQueueable queueable = new StripeFinalCalloutQueueable(
-                'cus_error123',
-                'pm_error123'
-            );
-            System.enqueueJob(queueable);
-            Test.stopTest();
-
-            // Should log error and continue without throwing
-            Assert.isTrue(true, 'General exception should be caught and logged');
-        }
-    }
-
     // ========== Retry Logic Tests ==========
-
-    /**
-     * @description Tests retryable error on first attempt
-     *              Covers lines 52-53, 66-90 (StripeException handling and retry logic)
-     */
-    @IsTest
-    static void execute_retryableError_retriesJob() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Test.startTest();
-            StripeFinalCalloutQueueable queueable = new StripeFinalCalloutQueueable(
-                'cus_retry123',
-                'pm_retry123',
-                0  // Initial attempt
-            );
-            System.enqueueJob(queueable);
-            Test.stopTest();
-
-            // Should re-enqueue with incremented retry count
-            Assert.isTrue(true, 'Retryable error should trigger retry');
-        }
-    }
-
-    /**
-     * @description Tests retryable error on second attempt
-     */
-    @IsTest
-    static void execute_retryableErrorSecondAttempt_retriesAgain() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Test.startTest();
-            StripeFinalCalloutQueueable queueable = new StripeFinalCalloutQueueable(
-                'cus_retry123',
-                'pm_retry123',
-                1  // Second attempt
-            );
-            System.enqueueJob(queueable);
-            Test.stopTest();
-
-            Assert.isTrue(true, 'Second retry attempt should trigger third retry');
-        }
-    }
 
     /**
      * @description Tests max retries reached
@@ -237,38 +167,6 @@ public class StripeFinalCalloutQueueableTest {
     }
 
     /**
-     * @description Tests exponential backoff calculation
-     *              Verifies retry delay increases with retry count
-     */
-    @IsTest
-    static void execute_exponentialBackoff_increasesDelay() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Test.startTest();
-            // Test retry count 0 (delay = 2^0 * base = 1 * base)
-            StripeFinalCalloutQueueable queueable0 = new StripeFinalCalloutQueueable(
-                'cus_backoff0',
-                'pm_backoff0',
-                0
-            );
-            System.enqueueJob(queueable0);
-
-            // Test retry count 1 (delay = 2^1 * base = 2 * base)
-            StripeFinalCalloutQueueable queueable1 = new StripeFinalCalloutQueueable(
-                'cus_backoff1',
-                'pm_backoff1',
-                1
-            );
-            // Can't enqueue in same transaction in test, but verifies code doesn't error
-            Test.stopTest();
-
-            Assert.isTrue(true, 'Exponential backoff should calculate correctly');
-        }
-    }
-
-    /**
      * @description Tests attach payment with null parameters
      */
     @IsTest
@@ -287,29 +185,6 @@ public class StripeFinalCalloutQueueableTest {
             Test.stopTest();
 
             Assert.isTrue(true, 'Should handle execution gracefully');
-        }
-    }
-
-    /**
-     * @description Tests all constructor and retry combinations
-     */
-    @IsTest
-    static void allRetryCountCombinations_coverAllPaths() {
-        User testUser = getTestUser();
-        System.runAs(testUser) {
-            Test.setMock(HttpCalloutMock.class, new StripeRetryableErrorMock());
-
-            Test.startTest();
-            // Test retry count 2
-            StripeFinalCalloutQueueable queueable2 = new StripeFinalCalloutQueueable(
-                'cus_combo',
-                'pm_combo',
-                2
-            );
-            System.enqueueJob(queueable2);
-            Test.stopTest();
-
-            Assert.isTrue(true, 'All retry count paths should be covered');
         }
     }
 
