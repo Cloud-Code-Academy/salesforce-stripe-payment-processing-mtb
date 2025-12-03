@@ -1,0 +1,14 @@
+{
+  "orgName": "Stripe Integration",
+  "edition": "Enterprise",
+  "language": "en_US",
+  "features": ["EnableSetPasswordInApi", "API", "Einstein1AIPlatform"],
+  "settings": {
+    "lightningExperienceSettings": {
+      "enableS1DesktopEnabled": true
+    },
+    "mobileSettings": {
+      "enableS1EncryptedStoragePref2": false
+    }
+  }
+}

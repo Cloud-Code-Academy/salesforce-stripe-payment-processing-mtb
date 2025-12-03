@@ -1,0 +1,49 @@
+services:
+  # FastAPI Middleware Application
+  middleware:
+    build:
+      context: .
+      target: development
+    container_name: salesforce-stripe-middleware
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/stripe-webhook-events
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - DYNAMODB_ENDPOINT_URL=http://localstack:4566
+      - DYNAMODB_TABLE_NAME=salesforce-stripe-cache
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+    depends_on:
+      - localstack
+    networks:
+      - middleware-network
+    restart: unless-stopped
+
+  # LocalStack for AWS Services (Development)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: middleware-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,dynamodb
+      - DEBUG=0
+      - SKIP_INFRA_DOWNLOADS=1
+      - AWS_DEFAULT_REGION=us-east-1
+      - PERSISTENCE=0
+    volumes:
+      - "./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh"
+    networks:
+      - middleware-network
+
+networks:
+  middleware-network:
+    driver: bridge
