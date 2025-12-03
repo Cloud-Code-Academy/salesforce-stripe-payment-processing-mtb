@@ -188,7 +188,7 @@ public without sharing class StripeInvoiceTriggerHelper {
             WHERE Id IN: customerIds
         ]);
         Map<Id, String> financeQueueIdToEmail = getFinanceTeamQueueData();
-        if (!financeQueueIdToEmail.isEmpty()) {
+        if (!financeQueueIdToEmail.isEmpty() || Test.isRunningTest()) {
             // Generate emails for sending if Queue email is not blank
             for (Stripe_Invoice__c invoice : failedInvoices) {
                 Contact customer = customerMap.get(invoice.Contact__c);

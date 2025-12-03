@@ -11,15 +11,6 @@ public class StripeSubscriptionTriggerHelperTest {
             return res;
         }
     }
-    private class StripeAPISessionSuccessMock implements HttpCalloutMock {
-        public HTTPResponse respond(HTTPRequest req) {
-            HttpResponse res = new HttpResponse();
-            res.setHeader('Content-Type', 'application/json');
-            res.setBody('{"id": "cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM", "object": "checkout.session", "url": "https://checkout.stripe.com/c/pay/cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdkdWxOYHwnPyd1blpxYHZxWjA0Vk03R1BDNm1LUXF%2FU3BCSWBxV2hyVEgzQF89YEB9YklSbmluNnxSa3c9N3REYU93c1R9NnRwUTR1V2lyPGx1ampNcGNvalIyMWN8TExValEyTGtXQ1xGNTVwXFYzX3R%2FNCcpJ2N3amhWYHdzYHcnP3F3cGApJ2dkZm5id2pwa2FGamlqdyc%2FJyZjY2NjY2MnKSdpZHxqcHFRfHVgJz8ndmxrYmlgWmxxYGgnKSdga2RnaWBVaWRmYG1qaWFgd3YnP3F3cGB4JSUl"}');
-            res.setStatusCode(200);
-            return res;
-        }
-    }
     @TestSetup
     static void setupTestData() {
         // Create test user with correct permission set name
@@ -124,48 +115,6 @@ public class StripeSubscriptionTriggerHelperTest {
             Assert.areEqual('Completed',
                                 result.Sync_Status__c,
                                 'Sync_Status__c was updated');
-
-        }
-    }
-    @IsTest
-    static void processStripeSubscriptionToCreateSession_createSessionInStripe_success(){
-        User testUser = getTestUser();
-        System.runAs(testUser){
-            Test.setMock(HttpCalloutMock.class, new StripeAPISessionSuccessMock());
-            Contact customerContact = new Contact(
-                FirstName = 'Test',
-                LastName = 'Testov',
-                Email = 'test4@example.com',
-                Phone = '+1234567894',
-                Stripe_Customer_ID__c = 'cus_THZzLMvNDK5uWm',
-                Default_Payment_Method__c = 'pm_1SLhFJF3hNTtzVuGpoRILACR'
-            );
-            insert customerContact;
-            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Stripe_Price_ID__c = 'price_1SL0u0F3hNTtzVuGs8NtCjiW',
-                Contact__c = customerContact.Id,
-                Sync_Status__c = 'Completed'
-            );
-            insert subscriptionRec;
-            subscriptionRec = [SELECT Id, Stripe_Price_ID__c, StripeCustomerId__c, Sync_Status__c
-                                FROM Stripe_Subscription__c
-                                WHERE Id = :subscriptionRec.Id];
-            StripeCalloutQueueable queueable = new StripeCalloutQueueable(
-                subscriptionRec.StripeCustomerId__c,
-                subscriptionRec.Stripe_Price_ID__c,
-                subscriptionRec.Id
-            );
-            Test.startTest();
-            System.enqueueJob(queueable);
-            Test.stopTest();
-            Stripe_Subscription__c result = [SELECT Stripe_Checkout_Session_ID__c, Sync_Status__c, Checkout_URL__c
-                                                FROM Stripe_Subscription__c
-                                                WHERE Id =: subscriptionRec.Id];
-            Assert.areEqual('cs_test_a1APLw6wEYwl7TijcXg8BbeHzO4YFQJ3RYmUAFyMWab3YT4BSq9c9x3PlM',
-                                result.Stripe_Checkout_Session_ID__c,
-                                'Stripe_Subscription_ID__c was assigned');
-            Assert.areNotEqual(null, result.Checkout_URL__c, 
-                                    'Checkout_URL__c was also updated');
 
         }
     }
@@ -317,69 +266,6 @@ public class StripeSubscriptionTriggerHelperTest {
         }
     }
 
-    /**
-     * Test processStripeSubscriptionToCreateSession with null parameters
-     */
-    @IsTest
-    static void processStripeSubscriptionToCreateSession_nullParameters_noError() {
-        System.runAs(getTestUser()) {
-            Test.startTest();
-            // Should not throw exception with null parameters
-            StripeSubscriptionTriggerHelper.processStripeSubscriptionToCreateSession(null, null);
-            StripeSubscriptionTriggerHelper.processStripeSubscriptionToCreateSession(
-                new List<Stripe_Subscription__c>(),
-                new Map<Id, Stripe_Subscription__c>()
-            );
-            Test.stopTest();
-
-            Assert.isTrue(true, 'Method should handle null/empty parameters gracefully');
-        }
-    }
-
-    /**
-     * Test processStripeSubscriptionToCreateSession with missing Stripe_Subscription_ID__c
-     */
-    @IsTest
-    static void processStripeSubscriptionToCreateSession_missingSubscriptionId_skipped() {
-        System.runAs(getTestUser()) {
-            Contact customerContact = new Contact(
-                FirstName = 'Test',
-                LastName = 'NoSubId',
-                Email = 'nosubid@example.com',
-                Phone = '+1234567890',
-                Stripe_Customer_ID__c = 'cus_nosubid'
-            );
-            insert customerContact;
-
-            // Create Pricing Plan
-            Pricing_Plan__c pricingPlan = new Pricing_Plan__c(
-                Stripe_Price_ID__c = 'price_test123',
-                ProductName__c = 'Test Product',
-                Amount__c = 100,
-                Currency__c = 'usd',
-                Recurrency_Type__c = 'month'
-            );
-            insert pricingPlan;
-
-            // Create subscription without Stripe_Subscription_ID__c
-            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
-                Pricing_Plan__c = pricingPlan.Id,
-                Contact__c = customerContact.Id,
-                Sync_Status__c = 'Completed'
-                // Missing Stripe_Subscription_ID__c
-            );
-
-            Test.startTest();
-            insert subscriptionRec;
-            Test.stopTest();
-
-            // Verify session was not created
-            Stripe_Subscription__c result = [SELECT Stripe_Checkout_Session_ID__c
-                                                FROM Stripe_Subscription__c WHERE Id = :subscriptionRec.Id];
-            Assert.areEqual(null, result.Stripe_Checkout_Session_ID__c,
-                'Session should not be created without Subscription ID');
-        }
-    }
 
     /**
      * Test bulk processing of subscriptions
@@ -1318,6 +1204,375 @@ public class StripeSubscriptionTriggerHelperTest {
             Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
             Assert.areEqual(90.00, updatedCustomer.MRR__c,
                 'MRR should use period-based calculation when no pricing plan exists');
+        }
+    }
+
+    /**
+     * Test MRR calculation with daily recurrency type
+     */
+    @IsTest
+    static void calculateMRR_dailyRecurrencyType_correctMRRCalculated() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'Daily',
+                Email = 'daily@example.com',
+                Phone = '+1234567901'
+            );
+            insert customer;
+
+            // Create Pricing Plan with daily recurrence
+            Pricing_Plan__c dailyPlan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_daily_test',
+                ProductName__c = 'Daily Product',
+                Amount__c = 10,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'day'
+            );
+            insert dailyPlan;
+
+            // Create subscription with daily billing
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = dailyPlan.Id,
+                Status__c = 'active',
+                Amount__c = 10.00,  // Daily: $10/day * 30 = $300 MRR
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now().addDays(1)
+            );
+
+            Test.startTest();
+            insert subscription;
+            Test.stopTest();
+
+            // Verify MRR is correctly calculated (10 * 30 = 300)
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(300.00, updatedCustomer.MRR__c,
+                'MRR should correctly convert daily billing to monthly (10 * 30 = 300)');
+        }
+    }
+
+    /**
+     * Test MRR calculation with unknown recurrency type and valid dates
+     */
+    @IsTest
+    static void calculateMRR_unknownRecurrencyWithDates_fallbackCalculation() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'Unknown',
+                Email = 'unknown@example.com',
+                Phone = '+1234567902'
+            );
+            insert customer;
+
+            // Create Pricing Plan with unknown recurrence type
+            Pricing_Plan__c unknownPlan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_unknown_test',
+                ProductName__c = 'Unknown Product',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'quarterly'  // Unknown type
+            );
+            insert unknownPlan;
+
+            // Create subscription with 90-day period (quarterly)
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = unknownPlan.Id,
+                Status__c = 'active',
+                Amount__c = 90.00,  // $90 for 90 days = $1/day * 30 = $30 MRR
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now().addDays(90)
+            );
+
+            Test.startTest();
+            insert subscription;
+            Test.stopTest();
+
+            // Verify MRR is calculated based on period dates (90/90*30 = 30)
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(30.00, updatedCustomer.MRR__c,
+                'MRR should use period-based calculation for unknown recurrency type');
+        }
+    }
+
+    /**
+     * Test MRR calculation with unknown recurrency type and no dates
+     */
+    @IsTest
+    static void calculateMRR_unknownRecurrencyNoDates_assumesMonthly() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'UnknownNoDates',
+                Email = 'unknownnodates@example.com',
+                Phone = '+1234567903'
+            );
+            insert customer;
+
+            // Create Pricing Plan with unknown recurrence type
+            Pricing_Plan__c unknownPlan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_unknown_nodates',
+                ProductName__c = 'Unknown Product No Dates',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'biweekly'  // Unknown type
+            );
+            insert unknownPlan;
+
+            // Create subscription without period dates
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = unknownPlan.Id,
+                Status__c = 'active',
+                Amount__c = 120.00
+                // No period dates
+            );
+
+            Test.startTest();
+            insert subscription;
+            Test.stopTest();
+
+            // Verify MRR assumes monthly amount (120)
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(120.00, updatedCustomer.MRR__c,
+                'MRR should assume monthly amount when no recurrency type or dates');
+        }
+    }
+
+    /**
+     * Test MRR calculation with insert scenario using isInsert logic path
+     * Directly tests the method with null oldMap to cover the isInsert code path
+     */
+    @IsTest
+    static void calculateMRR_isInsertPath_mrrCalculated() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'Insert',
+                LastName = 'Test',
+                Email = 'inserttest@example.com',
+                Phone = '+1234567910'
+            );
+            insert customer;
+
+            // Create Pricing Plan
+            Pricing_Plan__c plan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_insert_path',
+                ProductName__c = 'Insert Path Product',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
+            );
+            insert plan;
+
+            // Create subscription
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = plan.Id,
+                Status__c = 'active',
+                Amount__c = 200.00,
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now().addDays(30)
+            );
+            insert subscription;
+
+            Test.startTest();
+            // Directly call method with null oldMap to test isInsert code path
+            List<Stripe_Subscription__c> newList = new List<Stripe_Subscription__c>{subscription};
+            StripeSubscriptionTriggerHelper.calculateMRR_OfStripeCustomer(newList, null);
+            Test.stopTest();
+
+            // Verify MRR was calculated
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(200.00, updatedCustomer.MRR__c, 'MRR should be calculated via isInsert path');
+        }
+    }
+
+    /**
+     * Test MRR calculation with weekly recurrency type
+     */
+    @IsTest
+    static void calculateMRR_weeklyRecurrencyType_correctMRRCalculated() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'Weekly',
+                Email = 'weekly@example.com',
+                Phone = '+1234567904'
+            );
+            insert customer;
+
+            // Create Pricing Plan with weekly recurrence
+            Pricing_Plan__c weeklyPlan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_weekly_test',
+                ProductName__c = 'Weekly Product',
+                Amount__c = 25,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'week'
+            );
+            insert weeklyPlan;
+
+            // Create subscription with weekly billing
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = weeklyPlan.Id,
+                Status__c = 'active',
+                Amount__c = 25.00,  // Weekly: $25/week * 4.33 = $108.25 MRR
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now().addDays(7)
+            );
+
+            Test.startTest();
+            insert subscription;
+            Test.stopTest();
+
+            // Verify MRR is correctly calculated (25 * 4.33 = 108.25)
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(108.25, updatedCustomer.MRR__c,
+                'MRR should correctly convert weekly billing to monthly (25 * 4.33 = 108.25)');
+        }
+    }
+
+    /**
+     * Test processStripeSubscriptionAfterUpdate with missing Customer ID
+     */
+    @IsTest
+    static void processStripeSubscriptionAfterUpdate_missingCustomerId_skipped() {
+        System.runAs(getTestUser()) {
+            // Customer without Stripe_Customer_ID__c
+            Contact customerContact = new Contact(
+                FirstName = 'Test',
+                LastName = 'NoCustomerId',
+                Email = 'nocustomerid@example.com',
+                Phone = '+1234567905',
+                Default_Payment_Method__c = 'pm_test123'
+            );
+            insert customerContact;
+
+            // Create Pricing Plan
+            Pricing_Plan__c pricingPlan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_test123',
+                ProductName__c = 'Test Product',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'month'
+            );
+            insert pricingPlan;
+
+            Stripe_Subscription__c subscriptionRec = new Stripe_Subscription__c(
+                Pricing_Plan__c = pricingPlan.Id,
+                Contact__c = customerContact.Id,
+                Sync_Status__c = 'Send to Stripe'
+            );
+
+            Test.startTest();
+            insert subscriptionRec;
+            Test.stopTest();
+
+            // Verify subscription was created but not processed
+            Stripe_Subscription__c result = [SELECT Stripe_Subscription_ID__c
+                                                FROM Stripe_Subscription__c WHERE Id = :subscriptionRec.Id];
+            Assert.areEqual(null, result.Stripe_Subscription_ID__c,
+                'Subscription should not be processed without Customer ID');
+        }
+    }
+
+
+    /**
+     * Test MRR calculation with no recurrency type but valid period dates
+     */
+    @IsTest
+    static void calculateMRR_noRecurrencyButValidDates_periodBasedCalculation() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'NoRecurrency',
+                Email = 'norecurrency@example.com',
+                Phone = '+1234567908'
+            );
+            insert customer;
+
+            // Create Pricing Plan without Recurrency_Type__c
+            Pricing_Plan__c plan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_norecurrency',
+                ProductName__c = 'No Recurrency Product',
+                Amount__c = 100,
+                Currency__c = 'usd'
+                // No Recurrency_Type__c
+            );
+            insert plan;
+
+            // Create subscription with 60-day period
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = plan.Id,
+                Status__c = 'active',
+                Amount__c = 60.00,  // $60 for 60 days = $1/day * 30 = $30 MRR
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now().addDays(60)
+            );
+
+            Test.startTest();
+            insert subscription;
+            Test.stopTest();
+
+            // Verify MRR is calculated based on period dates (60/60*30 = 30)
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(30.00, updatedCustomer.MRR__c,
+                'MRR should use period-based calculation when no recurrency type');
+        }
+    }
+
+    /**
+     * Test MRR calculation with case-insensitive recurrency type (Year vs year)
+     */
+    @IsTest
+    static void calculateMRR_caseInsensitiveRecurrency_correctCalculation() {
+        System.runAs(getTestUser()) {
+            // Create customer
+            Contact customer = new Contact(
+                FirstName = 'MRR',
+                LastName = 'CaseTest',
+                Email = 'casetest@example.com',
+                Phone = '+1234567909'
+            );
+            insert customer;
+
+            // Create Pricing Plan with uppercase recurrency
+            Pricing_Plan__c plan = new Pricing_Plan__c(
+                Stripe_Price_ID__c = 'price_case_test',
+                ProductName__c = 'Case Test Product',
+                Amount__c = 100,
+                Currency__c = 'usd',
+                Recurrency_Type__c = 'Year'  // Uppercase
+            );
+            insert plan;
+
+            // Create subscription
+            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
+                Contact__c = customer.Id,
+                Pricing_Plan__c = plan.Id,
+                Status__c = 'active',
+                Amount__c = 1200.00,  // Yearly: $1200/year = $100 MRR
+                Current_Period_Start__c = Datetime.now(),
+                Current_Period_End__c = Datetime.now().addDays(365)
+            );
+
+            Test.startTest();
+            insert subscription;
+            Test.stopTest();
+
+            // Verify MRR is correctly calculated (1200/12 = 100)
+            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
+            Assert.areEqual(100.00, updatedCustomer.MRR__c,
+                'MRR calculation should be case-insensitive for recurrency type');
         }
     }
 }
