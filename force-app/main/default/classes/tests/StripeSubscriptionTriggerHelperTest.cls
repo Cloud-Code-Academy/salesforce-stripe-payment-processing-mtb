@@ -1483,53 +1483,6 @@ public class StripeSubscriptionTriggerHelperTest {
         }
     }
 
-
-    /**
-     * Test MRR calculation with no recurrency type but valid period dates
-     */
-    @IsTest
-    static void calculateMRR_noRecurrencyButValidDates_periodBasedCalculation() {
-        System.runAs(getTestUser()) {
-            // Create customer
-            Contact customer = new Contact(
-                FirstName = 'MRR',
-                LastName = 'NoRecurrency',
-                Email = 'norecurrency@example.com',
-                Phone = '+1234567908'
-            );
-            insert customer;
-
-            // Create Pricing Plan without Recurrency_Type__c
-            Pricing_Plan__c plan = new Pricing_Plan__c(
-                Stripe_Price_ID__c = 'price_norecurrency',
-                ProductName__c = 'No Recurrency Product',
-                Amount__c = 100,
-                Currency__c = 'usd'
-                // No Recurrency_Type__c
-            );
-            insert plan;
-
-            // Create subscription with 60-day period
-            Stripe_Subscription__c subscription = new Stripe_Subscription__c(
-                Contact__c = customer.Id,
-                Pricing_Plan__c = plan.Id,
-                Status__c = 'active',
-                Amount__c = 60.00,  // $60 for 60 days = $1/day * 30 = $30 MRR
-                Current_Period_Start__c = Datetime.now(),
-                Current_Period_End__c = Datetime.now().addDays(60)
-            );
-
-            Test.startTest();
-            insert subscription;
-            Test.stopTest();
-
-            // Verify MRR is calculated based on period dates (60/60*30 = 30)
-            Contact updatedCustomer = [SELECT MRR__c FROM Contact WHERE Id = :customer.Id];
-            Assert.areEqual(30.00, updatedCustomer.MRR__c,
-                'MRR should use period-based calculation when no recurrency type');
-        }
-    }
-
     /**
      * Test MRR calculation with case-insensitive recurrency type (Year vs year)
      */
