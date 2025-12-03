@@ -11,19 +11,9 @@
         <label>Weekly</label>
     </customValue>
     <customValue>
-        <fullName>Bi-weekly</fullName>
-        <default>false</default>
-        <label>Bi-weekly</label>
-    </customValue>
-    <customValue>
         <fullName>Monthly</fullName>
-        <default>false</default>
+        <default>true</default>
         <label>Monthly</label>
-    </customValue>
-    <customValue>
-        <fullName>Quarterly</fullName>
-        <default>false</default>
-        <label>Quarterly</label>
     </customValue>
     <customValue>
         <fullName>Yearly</fullName>

@@ -1,0 +1,354 @@
+{
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "# Stripe-Salesforce Middleware - 3-Lambda Architecture Dashboard\n**Environment:** ${Environment} | **Region:** ${AWS::Region} | **Stack:** ${AWS::StackName}"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 1,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Lambda Invocations (All 3 Functions)",
+        "metrics": [
+          ["AWS/Lambda", "Invocations", {"stat": "Sum", "label": "Webhook Receiver"}, {"dimensions": {"FunctionName": "${WebhookFunction}"}}],
+          ["...", {"stat": "Sum", "label": "SQS Worker"}, {"dimensions": {"FunctionName": "${SqsWorkerFunction}"}}],
+          ["...", {"stat": "Sum", "label": "Bulk Processor"}, {"dimensions": {"FunctionName": "${BulkProcessorFunction}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Invocations",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 1,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Lambda Errors (All 3 Functions)",
+        "metrics": [
+          ["AWS/Lambda", "Errors", {"stat": "Sum", "label": "Webhook Receiver", "color": "#d62728"}, {"dimensions": {"FunctionName": "${WebhookFunction}"}}],
+          ["...", {"stat": "Sum", "label": "SQS Worker", "color": "#ff7f0e"}, {"dimensions": {"FunctionName": "${SqsWorkerFunction}"}}],
+          ["...", {"stat": "Sum", "label": "Bulk Processor", "color": "#d62728"}, {"dimensions": {"FunctionName": "${BulkProcessorFunction}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Errors",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 7,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Lambda Duration (Average)",
+        "metrics": [
+          ["AWS/Lambda", "Duration", {"stat": "Average", "label": "Webhook Receiver"}, {"dimensions": {"FunctionName": "${WebhookFunction}"}}],
+          ["...", {"stat": "Average", "label": "SQS Worker"}, {"dimensions": {"FunctionName": "${SqsWorkerFunction}"}}],
+          ["...", {"stat": "Average", "label": "Bulk Processor"}, {"dimensions": {"FunctionName": "${BulkProcessorFunction}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Milliseconds",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 7,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Lambda Concurrent Executions",
+        "metrics": [
+          ["AWS/Lambda", "ConcurrentExecutions", {"stat": "Maximum", "label": "Webhook Receiver"}, {"dimensions": {"FunctionName": "${WebhookFunction}"}}],
+          ["...", {"stat": "Maximum", "label": "SQS Worker"}, {"dimensions": {"FunctionName": "${SqsWorkerFunction}"}}],
+          ["...", {"stat": "Maximum", "label": "Bulk Processor"}, {"dimensions": {"FunctionName": "${BulkProcessorFunction}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Concurrent Executions",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 7,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Lambda Throttles",
+        "metrics": [
+          ["AWS/Lambda", "Throttles", {"stat": "Sum", "label": "Webhook Receiver"}, {"dimensions": {"FunctionName": "${WebhookFunction}"}}],
+          ["...", {"stat": "Sum", "label": "SQS Worker"}, {"dimensions": {"FunctionName": "${SqsWorkerFunction}"}}],
+          ["...", {"stat": "Sum", "label": "Bulk Processor"}, {"dimensions": {"FunctionName": "${BulkProcessorFunction}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Throttles",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 13,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Main Queue Depth (HIGH/MEDIUM Priority)",
+        "metrics": [
+          ["AWS/SQS", "ApproximateNumberOfMessagesVisible", {"stat": "Average", "label": "Messages Visible"}, {"dimensions": {"QueueName": "${StripeEventQueue.QueueName}"}}],
+          ["...", "ApproximateNumberOfMessagesNotVisible", {"stat": "Average", "label": "Messages In Flight"}, {"dimensions": {"QueueName": "${StripeEventQueue.QueueName}"}}],
+          ["...", "ApproximateNumberOfMessagesDelayed", {"stat": "Average", "label": "Messages Delayed"}, {"dimensions": {"QueueName": "${StripeEventQueue.QueueName}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": true,
+        "region": "${AWS::Region}",
+        "period": 60,
+        "yAxis": {
+          "left": {
+            "label": "Messages",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 13,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Low-Priority Queue Depth (Bulk API)",
+        "metrics": [
+          ["AWS/SQS", "ApproximateNumberOfMessagesVisible", {"stat": "Average", "label": "Messages Visible", "color": "#1f77b4"}, {"dimensions": {"QueueName": "${LowPriorityEventQueue.QueueName}"}}],
+          ["...", "ApproximateNumberOfMessagesNotVisible", {"stat": "Average", "label": "Messages In Flight", "color": "#ff7f0e"}, {"dimensions": {"QueueName": "${LowPriorityEventQueue.QueueName}"}}],
+          ["...", "ApproximateNumberOfMessagesDelayed", {"stat": "Average", "label": "Messages Delayed", "color": "#2ca02c"}, {"dimensions": {"QueueName": "${LowPriorityEventQueue.QueueName}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": true,
+        "region": "${AWS::Region}",
+        "period": 60,
+        "yAxis": {
+          "left": {
+            "label": "Messages",
+            "showUnits": false
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Batch Size Threshold (200)",
+              "value": 200,
+              "fill": "above",
+              "color": "#d62728"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 13,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Dead Letter Queue (DLQ)",
+        "metrics": [
+          ["AWS/SQS", "ApproximateNumberOfMessagesVisible", {"stat": "Average", "label": "Messages in DLQ", "color": "#d62728"}, {"dimensions": {"QueueName": "${StripeEventDLQ.QueueName}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 60,
+        "yAxis": {
+          "left": {
+            "label": "Messages",
+            "showUnits": false
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Alert Threshold",
+              "value": 1,
+              "fill": "above",
+              "color": "#d62728"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 19,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "SQS Message Age (Oldest Message)",
+        "metrics": [
+          ["AWS/SQS", "ApproximateAgeOfOldestMessage", {"stat": "Maximum", "label": "Main Queue"}, {"dimensions": {"QueueName": "${StripeEventQueue.QueueName}"}}],
+          ["...", {"stat": "Maximum", "label": "Low-Priority Queue"}, {"dimensions": {"QueueName": "${LowPriorityEventQueue.QueueName}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 60,
+        "yAxis": {
+          "left": {
+            "label": "Seconds",
+            "showUnits": false
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "30 Second Threshold (Batch Time)",
+              "value": 30,
+              "color": "#ff7f0e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 19,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API Gateway Metrics",
+        "metrics": [
+          ["AWS/ApiGateway", "Count", {"stat": "Sum", "label": "Total Requests"}, {"dimensions": {"ApiId": "${WebhookHttpApi}"}}],
+          ["...", "4XXError", {"stat": "Sum", "label": "4XX Errors", "color": "#ff7f0e"}, {"dimensions": {"ApiId": "${WebhookHttpApi}"}}],
+          ["...", "5XXError", {"stat": "Sum", "label": "5XX Errors", "color": "#d62728"}, {"dimensions": {"ApiId": "${WebhookHttpApi}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Requests",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 25,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API Gateway Latency",
+        "metrics": [
+          ["AWS/ApiGateway", "Latency", {"stat": "Average", "label": "Average Latency"}, {"dimensions": {"ApiId": "${WebhookHttpApi}"}}],
+          ["...", {"stat": "p99", "label": "P99 Latency"}, {"dimensions": {"ApiId": "${WebhookHttpApi}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Milliseconds",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 25,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DynamoDB Consumed Capacity",
+        "metrics": [
+          ["AWS/DynamoDB", "ConsumedReadCapacityUnits", {"stat": "Sum", "label": "Cache Table Reads"}, {"dimensions": {"TableName": "${CacheTable}"}}],
+          ["...", "ConsumedWriteCapacityUnits", {"stat": "Sum", "label": "Cache Table Writes"}, {"dimensions": {"TableName": "${CacheTable}"}}],
+          ["...", "ConsumedReadCapacityUnits", {"stat": "Sum", "label": "Batch Accumulator Reads"}, {"dimensions": {"TableName": "${BatchAccumulatorTable}"}}],
+          ["...", "ConsumedWriteCapacityUnits", {"stat": "Sum", "label": "Batch Accumulator Writes"}, {"dimensions": {"TableName": "${BatchAccumulatorTable}"}}]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS::Region}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "label": "Capacity Units",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 31,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "Recent Lambda Errors",
+        "query": "SOURCE '/aws/lambda/${WebhookFunction}'\n| SOURCE '/aws/lambda/${SqsWorkerFunction}'\n| SOURCE '/aws/lambda/${BulkProcessorFunction}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 20",
+        "region": "${AWS::Region}",
+        "stacked": false,
+        "view": "table"
+      }
+    }
+  ]
+}

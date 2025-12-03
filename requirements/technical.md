@@ -12,6 +12,7 @@ This capstone project is a comprehensive payment processing solution that integr
 - **Collaboration:** Required through Slack, virtual meetings, and code reviews
 - **Repository:** All metadata must be stored and versioned in GitHub
 - **Scratch Org Management:** Each team member creates and manages their own scratch orgs from shared source
+- **Demo Environment:** Trailhead Playground used for final project demonstration (Connected Apps do not work in scratch orgs)
 
 ## Technical Architecture Focus
 
@@ -24,7 +25,7 @@ This project emphasizes real-world integration patterns including:
 - **Asynchronous Processing:** Queueable classes for bulk operations, SQS for event queuing
 - **Error Handling:** Comprehensive logging and retry mechanisms with exponential backoff
 - **Rate Limiting:** Sliding window algorithm for Salesforce API rate limiting
-- **Cloud Infrastructure:** AWS services (Lambda/ECS, SQS, Redis) for middleware deployment
+- **Cloud Infrastructure:** AWS services (Lambda, SQS, DynamoDB) for middleware deployment
 
 ---
 
@@ -65,7 +66,7 @@ This project emphasizes real-world integration patterns including:
 **Subscription Management (Salesforce → Stripe):**
 - Apex methods to create Stripe Checkout sessions
 - Subscription record creation with checkout tracking
-- Support for multiple subscription plans using Custom Metadata
+- Support for multiple subscription plans using Pricing Plans custom object
 - Queueable implementation for bulk subscription operations
 - Test coverage for subscription flows
 
@@ -78,8 +79,8 @@ This project emphasizes real-world integration patterns including:
 
 - **AWS Infrastructure Configuration:**
   - SQS queue creation for event buffering
-  - Redis setup for temporary storage and token caching
-  - Lambda deployment OR ECS container deployment
+  - DynamoDB setup for temporary storage and token caching
+  - Lambda deployment configuration
   - IAM roles and security policies
 
 - **Salesforce Connected App & OAuth:**
@@ -123,6 +124,7 @@ This project emphasizes real-world integration patterns including:
 - **Event Type Implementation:**
   - `customer.updated` - Sync customer data changes to Salesforce
   - `checkout.session.completed` - Update subscription status to active
+  - `customer.subscription.created` - Create new subscription records in Salesforce
   - `payment_intent.succeeded` - Create payment transaction records
   - `payment_intent.failed` - Log failed payments and trigger alerts
   - `customer.subscription.updated` - Sync subscription status changes
@@ -152,12 +154,12 @@ This project emphasizes real-world integration patterns including:
 - Audit trail for all synchronization activities
 
 **Rate Limiting & Throttling:**
-- **Sliding Window Rate Limiter:** Redis-based sliding window algorithm to track API calls per time window
+- **Sliding Window Rate Limiter:** DynamoDB-based sliding window algorithm to track API calls per time window
 - **Exponential Backoff:** For both inbound (Salesforce API) and outbound (Stripe API) retries
 - **Request Throttling:** Queue-based throttling to stay within Salesforce governor limits
 - **Priority-Based Processing:**
   - High-priority events: Processed in real-time via Salesforce REST API
-  - Low-priority events: Batched in Redis and sent via Salesforce Bulk API
+  - Low-priority events: Batched in DynamoDB and sent via Salesforce Bulk API
 - Queue depth monitoring and alerting
 - Circuit breaker pattern for failing endpoints
 
@@ -213,7 +215,7 @@ This project emphasizes real-world integration patterns including:
 **Monitoring & Observability:**
 
 - **Middleware Monitoring:**
-  - Coralogix metrics and alarms
+  - CloudWatch metrics and alarms
   - Error rate tracking
   - Latency monitoring
   - Queue depth alerts
@@ -260,19 +262,14 @@ This project emphasizes real-world integration patterns including:
 
 **Custom Objects Implemented:**
 
-#### Stripe Customer (`Stripe_Customer__c`)
-- **Name:** Auto-Number (SC-{000000}) - Stripe Customer Number
+#### Contact (Standard Object with Stripe Customer Fields)
 - **Stripe Customer ID** (`Stripe_Customer_ID__c`) - Text (External ID, Unique) - Maps to Stripe customer ID
-- **Customer Email** (`Customer_Email__c`) - Email
-- **Customer Name** (`Customer_Name__c`) - Text
-- **Customer Phone** (`Customer_Phone__c`) - Phone
 - **Default Payment Method** (`Default_Payment_Method__c`) - Text
 - **Subscription Status** (`Subscription_Status__c`) - Picklist (None, Active, Past Due, Canceled)
-- **Contact** (`Contact__c`) - Lookup to Contact object
-- **Object Settings:**
-  - Track field history enabled
-  - Reports and dashboards enabled
-  - Sharing: ReadWrite
+- **Standard Fields Used:**
+  - Email - Customer email address
+  - FirstName/LastName - Customer name
+  - Phone - Customer phone number
 
 #### Stripe Subscription (`Stripe_Subscription__c`)
 - **Name:** Auto-Number (SUB-{000000}) - Subscription Number
@@ -301,10 +298,42 @@ This project emphasizes real-world integration patterns including:
   - Reports and dashboards enabled
   - Sharing: ReadWrite
 
+#### Stripe Invoice (`Stripe_Invoice__c`)
+- **Name:** Auto-Number (INV-{000000}) - Invoice Number
+- **Stripe Invoice ID** (`Stripe_Invoice_ID__c`) - Text (External ID, Unique) - Maps to Stripe invoice ID
+- **Stripe Subscription** (`Stripe_Subscription__c`) - Lookup to Stripe_Subscription__c
+- **Stripe Customer** (`Stripe_Customer__c`) - Lookup to Stripe_Customer__c
+- **Amount** (`Amount__c`) - Currency - Total invoice amount
+- **Line Items** (`Line_Items__c`) - Long Text Area (32,768 characters) - JSON-formatted line items from Stripe
+- **Invoice PDF URL** (`Invoice_PDF_URL__c`) - URL - Link to Stripe-hosted invoice PDF
+- **Period Start** (`Period_Start__c`) - DateTime - Billing period start date
+- **Period End** (`Period_End__c`) - DateTime - Billing period end date
+- **Due Date** (`Due_Date__c`) - DateTime - Payment due date
+- **Tax Amount** (`Tax_Amount__c`) - Currency - Tax charged on invoice
+- **Discounts Applied** (`Discounts_Applied__c`) - Currency - Total discount amount
+- **Status** (`Status__c`) - Picklist with field history tracking:
+  - draft
+  - open
+  - paid
+  - uncollectible
+  - void
+- **Dunning Status** (`Dunning_Status__c`) - Picklist - Payment retry status:
+  - none (default)
+  - trying (Stripe is retrying payment)
+  - exhausted (All retry attempts failed)
+- **Object Settings:**
+  - Track field history enabled
+  - Reports and dashboards enabled
+  - Sharing: ReadWrite
+- **Purpose:** Tracks Stripe invoices for subscription billing cycles, enabling finance teams to monitor revenue, billing periods, and payment collection status
+
 #### Payment Transaction (`Payment_Transaction__c`)
 - **Name:** Auto-Number (PMT-{000000}) - Payment Transaction Number
 - **Stripe Payment Intent ID** (`Stripe_Payment_Intent_ID__c`) - Text (External ID, Unique)
 - **Stripe Customer** (`Stripe_Customer__c`) - Lookup to Stripe_Customer__c
+- **Stripe Subscription** (`Stripe_Subscription__c`) - Lookup to Stripe_Subscription__c
+- **Stripe Invoice** (`Stripe_Invoice__c`) - Lookup to Stripe_Invoice__c - Links payment to invoice
+- **Stripe Invoice ID** (`Stripe_Invoice_ID__c`) - Text - Stripe invoice identifier (for reference)
 - **Amount** (`Amount__c`) - Currency
 - **Currency** (`Currency__c`) - Text (3 characters)
 - **Status** (`Status__c`) - Picklist with field history tracking:
@@ -315,9 +344,13 @@ This project emphasizes real-world integration patterns including:
   - requires_capture
   - canceled
   - succeeded
+  - failed
 - **Payment Method Type** (`Payment_Method_Type__c`) - Text
 - **Transaction Date** (`Transaction_Date__c`) - DateTime
-- **Stripe Subscription** (`Stripe_Subscription__c`) - Lookup to Stripe_Subscription__c
+- **Transaction Type** (`Transaction_Type__c`) - Picklist:
+  - initial_payment (First payment for subscription)
+  - recurring_payment (Subscription renewal payment)
+- **Failure Reason** (`Failure_Reason__c`) - Text (500 characters) - Detailed failure message from Stripe
 - **Object Settings:**
   - Track field history enabled
   - Reports and dashboards enabled
@@ -357,11 +390,19 @@ This project emphasizes real-world integration patterns including:
 ```
 Contact (1) ----< (M) Stripe_Customer__c
 Stripe_Customer__c (1) ----< (M) Stripe_Subscription__c
+Stripe_Customer__c (1) ----< (M) Stripe_Invoice__c
 Stripe_Customer__c (1) ----< (M) Payment_Transaction__c
+Stripe_Subscription__c (1) ----< (M) Stripe_Invoice__c
 Stripe_Subscription__c (1) ----< (M) Payment_Transaction__c
 Stripe_Subscription__c (1) ----< (M) Pricing_Plan__c
+Stripe_Invoice__c (1) ----< (M) Payment_Transaction__c
 Pricing_Plan__c (1) ----< (M) Pricing_Tier__c (Master-Detail)
 ```
+
+**Invoice-Payment Relationship Pattern:**
+- Invoices are the parent billing documents
+- Payment Transactions are child records that track payment attempts
+- A single invoice can have multiple payment transactions (initial attempt + retries)
 
 **Key Design Patterns:**
 - **External IDs:** All Stripe objects use External ID fields for upsert operations from middleware
@@ -412,10 +453,10 @@ The middleware acts as an intermediary between Stripe webhooks and Salesforce, p
 **Component Stack:**
 - **Web Framework:** FastAPI (Python)
 - **Event Queue:** AWS SQS for event buffering
-- **Caching Layer:** Redis for token caching and temporary storage
-- **Deployment:** AWS Lambda (serverless) OR AWS ECS (containerized)
+- **Storage Layer:** DynamoDB for token caching and temporary storage
+- **Deployment:** AWS Lambda (serverless)
 - **Secrets Management:** AWS Secrets Manager
-- **Monitoring:** Coralogix
+- **Monitoring:** CloudWatch
 
 **Webhook Endpoint Implementation:**
 
@@ -444,19 +485,19 @@ POST /webhook/stripe
 |------------|---------|-------------------|
 | `customer.updated` | Customer data changed in Stripe | Update Stripe_Customer__c record |
 | `checkout.session.completed` | Customer completed payment | Update Subscription sync status to Completed |
-| `customer.subscription.created` | New subscription created | Create/update Stripe_Subscription__c |
+| `customer.subscription.created` | New subscription created in Stripe | Create/update Stripe_Subscription__c |
 | `customer.subscription.updated` | Subscription modified | Update Stripe_Subscription__c status |
 | `customer.subscription.deleted` | Subscription canceled | Update status to Canceled |
 | `payment_intent.succeeded` | Payment successful | Create Payment_Transaction__c record |
 | `payment_intent.payment_failed` | Payment failed | Create failed transaction record, log error |
-| `invoice.payment_succeeded` | Recurring payment succeeded | Update subscription, create transaction |
-| `invoice.payment_failed` | Recurring payment failed | Log failure, trigger dunning process |
+| `invoice.payment_succeeded` | Recurring payment succeeded | Create/update Stripe_Invoice__c (status=paid), create Payment_Transaction__c, update subscription billing period |
+| `invoice.payment_failed` | Recurring payment failed | Create/update Stripe_Invoice__c with dunning status, create failed Payment_Transaction__c, update subscription to past_due |
 
 **Salesforce Integration (from Middleware):**
 
 - **OAuth 2.0 Authentication:**
   - Use Connected App with client credentials flow
-  - Cache access tokens in Redis (respect expiration)
+  - Cache access tokens in DynamoDB (respect expiration)
   - Automatic token refresh on expiration
   - Dedicated integration user in Salesforce
 
@@ -473,9 +514,9 @@ POST /webhook/stripe
 - **Conflict Resolution:** Timestamp-based last-write-wins strategy
 - **Priority-Based Processing:**
   - **High-Priority:** Real-time critical events (payment failures, subscription cancellations) → Immediate REST API calls
-  - **Low-Priority:** Non-urgent events (customer updates, metadata changes) → Batched in Redis → Bulk API
+  - **Low-Priority:** Non-urgent events (customer updates, metadata changes) → Batched in DynamoDB → Bulk API
 - **Retry Logic:** Exponential backoff (without jitter) with max retry attempts for both inbound and outbound calls
-- **Sliding Window Rate Limiting:** Redis-based sliding window to track and limit Salesforce API calls within time windows
+- **Sliding Window Rate Limiting:** DynamoDB-based sliding window to track and limit Salesforce API calls within time windows
 
 **Error Handling:**
 
@@ -531,7 +572,7 @@ POST /webhook/stripe
   - Prevent SOQL/SOSL injection
 
 - **Rate Limiting:**
-  - Sliding window algorithm (Redis-based) to track API calls per time window
+  - Sliding window algorithm (DynamoDB-based) to track API calls per time window
   - Respect Salesforce API limits (governor limits)
   - Exponential backoff (without jitter) for retries
   - Priority queue for high vs. low priority events
@@ -557,12 +598,13 @@ POST /webhook/stripe
 
 ### 5. Advanced Features
 
-**Priority-Based Processing with Redis + Bulk API:**
+**Priority-Based Processing with DynamoDB + Bulk API:**
 - **High-Priority Events:** Processed in real-time via Salesforce REST API
   - Payment failures (`payment_intent.payment_failed`)
   - Subscription cancellations (`customer.subscription.deleted`)
   - Checkout completions (`checkout.session.completed`)
-- **Low-Priority Events:** Batched in Redis and sent via Salesforce Bulk API
+  - New subscription creation (`customer.subscription.created`)
+- **Low-Priority Events:** Batched in DynamoDB and sent via Salesforce Bulk API
   - Customer metadata updates (`customer.updated`)
   - Non-critical subscription updates
 - **No Scheduled Reconciliation Needed:** Real-time + bulk processing ensures continuous data sync without daily batch jobs
@@ -578,7 +620,7 @@ POST /webhook/stripe
   - Dead letter queue for permanent failures
 
 **Sliding Window Rate Limiting:**
-- Redis-based sliding window algorithm
+- DynamoDB-based sliding window algorithm
 - Track API calls per minute/hour window
 - Prevent exceeding Salesforce API limits
 - Dynamic throttling based on remaining quota
@@ -594,6 +636,58 @@ POST /webhook/stripe
 - Chain Queueable jobs for complex workflows
 - Handle bulk webhook processing asynchronously
 - Stay within governor limits with proper bulkification
+
+**Invoice Automation (Salesforce-Side):**
+
+While invoice records are created by the middleware via webhooks, Salesforce-side automation is needed to maximize value for finance teams:
+
+**Required Trigger Framework:**
+- **StripeInvoiceTrigger.trigger** - Apex trigger on Stripe_Invoice__c (after insert, after update)
+- **StripeInvoiceTriggerHandler.cls** - Handler class following existing trigger pattern
+- **StripeInvoiceTriggerHelper.cls** - Helper class with business logic
+
+**Core Automation Capabilities:**
+
+1. **Revenue Rollup Calculations:**
+   - Aggregate invoice amounts to parent Customer and Subscription records
+   - Calculate Monthly Recurring Revenue (MRR) from subscription invoices
+   - Track total invoiced vs. total collected amounts
+   - Fields needed: `Stripe_Customer__c.Total_Revenue__c`, `Stripe_Subscription__c.Total_Invoiced__c`
+
+2. **Finance Team Notifications:**
+   - Send email alerts when `invoice.payment_failed` events occur
+   - High-priority notifications when `Dunning_Status__c = 'exhausted'`
+   - Include customer info, amount, and failure reason in notification
+   - Create follow-up Tasks for Customer Success team
+
+3. **Customer Health Scoring:**
+   - Calculate health score based on invoice payment patterns
+   - Track payment failure rate and days overdue average
+   - Update `Stripe_Customer__c.Health_Score__c` (0-100 scale)
+   - Flag customers with declining health trends
+
+4. **Churn Risk Detection:**
+   - Flag customers with 3+ failed invoices in 6 months
+   - Set `Stripe_Customer__c.Churn_Risk__c = true`
+   - Calculate churn probability score
+   - Trigger proactive retention workflows
+
+5. **Dunning Escalation:**
+   - Progress dunning status based on attempt count and time elapsed
+   - "none" → "trying" (1-4 attempts) → "exhausted" (5+ attempts)
+   - Escalate to collections team when exhausted
+   - Update collection status field
+
+6. **Batch Jobs for Maintenance:**
+   - **InvoiceCollectionBatch** - Daily job to identify overdue invoices
+   - **CustomerHealthScoreBatch** - Weekly recalculation of health scores
+   - **RevenueRollupBatch** - Nightly revenue reconciliation
+
+**Testing Requirements:**
+- Bulkified trigger testing (200+ invoice records)
+- Test rollup calculations with various invoice amounts
+- Test notification sending (with limits in mind)
+- Test health score calculations with different payment patterns
 
 ---
 
@@ -615,7 +709,7 @@ POST /webhook/stripe
 - JSON-formatted logs for parsing
 - Correlation IDs for request tracing
 - Log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- Coralogix integration for centralized logging
+- CloudWatch integration for centralized logging
 - Log retention policies
 
 **Monitoring Dashboard:**
@@ -627,7 +721,7 @@ POST /webhook/stripe
 - Sync lag (time between Stripe event and Salesforce update)
 - Error rate by category
 
-**Middleware Metrics (Coralogix):**
+**Middleware Metrics (CloudWatch):**
 - Request count and success rate
 - Response time (p50, p95, p99)
 - Error rate by endpoint and event type
@@ -684,7 +778,7 @@ middleware/
 │   │   ├── stripe_service.py      # Stripe signature verification
 │   │   ├── salesforce_service.py  # Salesforce API client
 │   │   ├── sqs_service.py         # SQS queue operations
-│   │   ├── redis_service.py       # Redis cache operations
+│   │   ├── dynamodb_service.py    # DynamoDB storage operations
 │   │   └── rate_limiter.py        # Sliding window rate limiter
 │   ├── handlers/
 │   │   ├── __init__.py
@@ -727,6 +821,7 @@ middleware/
 - **Scratch Org Lifecycle:** 7-30 day lifespan, recreate as needed from source
 - **Version Control:** All metadata in GitHub, scratch orgs created from source
 - **Dev Hub:** Required for scratch org creation (enable in production or Developer Edition org)
+- **Demo Environment:** Use Trailhead Playground for final project demonstration (Connected Apps do not work in scratch orgs)
 
 ### Recommended Tools
 
@@ -737,15 +832,13 @@ middleware/
 - **FastAPI:** Modern Python web framework with automatic API documentation
 - **Pydantic:** Data validation using Python type hints
 - **httpx:** Async HTTP client for API calls
-- **boto3:** AWS SDK for Python (SQS, Secrets Manager)
-- **redis-py:** Redis client for caching
+- **boto3:** AWS SDK for Python (SQS, DynamoDB, Secrets Manager)
 - **pytest:** Testing framework
 
 **Infrastructure:**
-- **AWS Services:** Lambda/ECS, SQS, Redis (ElastiCache), Secrets Manager
-- **Monitoring:** Coralogix for centralized logging and metrics
-- **Docker:** Containerization for consistent deployment
-- **Terraform (Optional):** Infrastructure as code
+- **AWS Services:** Lambda, SQS, DynamoDB, Secrets Manager
+- **Monitoring:** CloudWatch for centralized logging and metrics
+- **Docker:** Containerization for local development and testing
 
 ---
 
@@ -844,10 +937,10 @@ middleware/
 
 **Middleware Optimization:**
 - Async request handling (FastAPI async/await)
-- Connection pooling for database and Redis
+- Connection pooling for database and DynamoDB
 - Token caching to minimize OAuth calls
 - Batch processing for non-urgent events
-- Horizontal scaling (multiple Lambda instances or ECS tasks)
+- Horizontal scaling (multiple Lambda instances)
 - SQS visibility timeout tuning
 
 **Scalability Targets:**
@@ -878,8 +971,8 @@ middleware/
 3. **Middleware Deployment:**
    - Deployed and accessible middleware service
    - Webhook URL registered with Stripe
-   - Monitoring dashboards configured in Coralogix
-   - Logs accessible via Coralogix
+   - Monitoring dashboards configured in CloudWatch
+   - Logs accessible via CloudWatch
 
 4. **Documentation Package:**
    - Setup guide for developers

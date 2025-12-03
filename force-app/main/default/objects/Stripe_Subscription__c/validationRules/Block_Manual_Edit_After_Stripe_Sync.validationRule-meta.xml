@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Block_Manual_Edit_After_Stripe_Sync</fullName>
+    <active>true</active>
+    <description>Prevent users from editing Stripe-synced fields after subscription is created in Stripe</description>
+    <errorConditionFormula>AND(
+    NOT(ISBLANK(Stripe_Subscription_ID__c)),
+    NOT($CustomMetadata.Bypass_Automation__mdt.Block_Subscription_Manual_Edit.Skip_Validation_Rules__c),
+    OR(
+        ISCHANGED(Status__c),
+        ISCHANGED(Amount__c),
+        ISCHANGED(Current_Period_Start__c),
+        ISCHANGED(Current_Period_End__c),
+        ISCHANGED(Stripe_Price_ID__c),
+        ISCHANGED(Currency__c)
+    )
+)</errorConditionFormula>
+    <errorMessage>This subscription is managed by Stripe. You cannot manually edit Status, Amount, Billing Period, or Price fields. Updates will sync automatically from Stripe webhooks.</errorMessage>
+</ValidationRule>

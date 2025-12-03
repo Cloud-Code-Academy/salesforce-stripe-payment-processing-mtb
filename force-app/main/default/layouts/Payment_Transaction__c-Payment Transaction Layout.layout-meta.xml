@@ -28,12 +28,12 @@
                 <behavior>Edit</behavior>
                 <field>Stripe_Payment_Intent_ID__c</field>
             </layoutItems>
+            <layoutItems>
+                <behavior>Required</behavior>
+                <field>Stripe_Invoice__c</field>
+            </layoutItems>
         </layoutColumns>
         <layoutColumns>
-            <layoutItems>
-                <behavior>Edit</behavior>
-                <field>OwnerId</field>
-            </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Status__c</field>
@@ -41,10 +41,6 @@
             <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Payment_Method_Type__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Edit</behavior>
-                <field>Stripe_Customer__c</field>
             </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>

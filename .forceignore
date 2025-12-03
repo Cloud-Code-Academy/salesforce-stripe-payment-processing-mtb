@@ -13,3 +13,7 @@ package.xml
 
 # Profiles
 /force-app/main/default/profiles
+/force-app/main/default/connectedApps
+# Ignore CleanStatus field (not available in scratch org)
+**/objects/Contact/fields/CleanStatus.field-meta.xml
+**/fieldPermissions/*CleanStatus*

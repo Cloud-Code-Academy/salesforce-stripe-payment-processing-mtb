@@ -1,0 +1,40 @@
+# Exclude environment files from Lambda deployment
+.env
+.env.*
+.env.local
+.env.*.local
+
+# Exclude test files
+tests/
+test_*.py
+*_test.py
+pytest.ini
+.pytest_cache/
+
+# Exclude development files
+.git/
+.gitignore
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile*
+Makefile
+
+# Exclude documentation
+*.md
+docs/
+LICENSE
+
+# Exclude IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Exclude Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python

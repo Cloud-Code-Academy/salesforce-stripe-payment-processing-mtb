@@ -11,6 +11,7 @@ This capstone project challenges you to build a production-ready payment process
 - **Duration:** 4 weeks
 - **Team Size:** 3 members maximum
 - **Development Model:** Scratch org-based development with individual scratch orgs per team member
+- **Demo Environment:** Trailhead Playground for final demonstration (Connected Apps do not work in scratch orgs)
 - **Collaboration:** Required through Slack, virtual meetings, and code reviews
 - **Repository:** All metadata must be stored and versioned in GitHub
 - **Architecture:** Full-stack integration with Salesforce (backend), FastAPI middleware, and Stripe
@@ -119,20 +120,20 @@ Your solution must demonstrate these real-world integration patterns:
 
 2. **AWS Infrastructure Configuration:**
    - Create SQS queue for event buffering
-   - Set up Redis instance for token caching and temporary storage
+   - Set up DynamoDB for token caching and temporary storage
    - Configure AWS Secrets Manager for credential storage
-   - Choose deployment model (Lambda or ECS)
+   - Configure Lambda deployment
    - Set up IAM roles with least privilege access
 
 3. **Salesforce Connected App & OAuth:**
-   - Create Connected App in Salesforce
+   - Create Connected App in Salesforce (or use Trailhead Playground for demo as Connected Apps do not work in scratch orgs)
    - Configure OAuth 2.0 client credentials flow
    - Generate client ID and client secret
    - Store credentials in AWS Secrets Manager
    - Test OAuth token acquisition from middleware
 
 4. **Middleware-to-Salesforce Integration:**
-   - Implement OAuth token management (acquire, refresh, cache in Redis)
+   - Implement OAuth token management (acquire, refresh, cache in DynamoDB)
    - Create Salesforce REST API client wrapper
    - Test basic CRUD operations (create, update records)
    - Implement environment variable configuration
@@ -165,6 +166,7 @@ Your solution must demonstrate these real-world integration patterns:
 1. **Critical Event Handlers:**
    Implement handlers for these high-priority events:
    - `checkout.session.completed` - Update subscription status to active
+   - `customer.subscription.created` - Create new subscription records in Salesforce
    - `payment_intent.succeeded` - Create payment transaction record
    - `payment_intent.payment_failed` - Log failure and trigger alerts
    - `customer.subscription.deleted` - Handle cancellations
@@ -186,11 +188,11 @@ Your solution must demonstrate these real-world integration patterns:
 #### Advanced Processing Features:
 1. **Priority-Based Processing:**
    - **High-Priority Events:** Process immediately via Salesforce REST API
-   - **Low-Priority Events:** Batch in Redis → Salesforce Bulk API
+   - **Low-Priority Events:** Batch in DynamoDB → Salesforce Bulk API
    - Implement decision logic to route events appropriately
 
 2. **Sliding Window Rate Limiting:**
-   - Implement Redis-based sliding window algorithm
+   - Implement DynamoDB-based sliding window algorithm
    - Track API calls per minute/hour window
    - Dynamically throttle based on remaining Salesforce API quota
    - Prevent exceeding governor limits
@@ -215,23 +217,24 @@ Your solution must demonstrate these real-world integration patterns:
 #### Comprehensive Logging System:
 - **Salesforce:** Nebula Logger for all integration events
 - **Middleware:** Structured JSON logs with correlation IDs
-- **Monitoring:** Coralogix integration for centralized observability
+- **Monitoring:** CloudWatch integration for centralized observability
 - Error categorization (network, business logic, data)
 
 #### Technical Options:
 Your team is implementing the **Middleware Architecture** approach:
 - External FastAPI service handles webhook processing
 - SQS buffers events to handle traffic spikes
-- Redis provides caching and temporary storage
+- DynamoDB provides storage and token caching
 - OAuth 2.0 for middleware-to-Salesforce authentication
+- Docker for containerization (not using Terraform)
 
 #### Week 3 Deliverables:
-- ✅ Functional webhook processing for all critical events
+- ✅ Functional webhook processing for all critical events (including `customer.subscription.created`)
 - ✅ Real-time data synchronization working
 - ✅ Priority-based processing (high-priority real-time, low-priority batched)
 - ✅ Sliding window rate limiting implemented
 - ✅ Bulk operation capabilities tested
-- ✅ Comprehensive logging system in place with Coralogix
+- ✅ Comprehensive logging system in place with CloudWatch
 - ✅ 70%+ code coverage achieved
 - ✅ Retry logic with exponential backoff functional
 
@@ -323,7 +326,8 @@ Your team is implementing the **Middleware Architecture** approach:
 - ✅ User documentation and setup guide
 - ✅ Technical documentation package
 - ✅ Final presentation and demonstration materials
-- ✅ Monitoring dashboards configured in Coralogix
+- ✅ Monitoring dashboards configured in CloudWatch
+- ✅ Trailhead Playground prepared for demo environment
 
 ---
 
@@ -505,7 +509,7 @@ Your team is implementing the **Middleware Architecture** approach:
    - `customer.updated` webhook sent to middleware
    - Stripe Customer record updated in Salesforce
    - Contact record updated (if linked)
-   - **Technical Implementation:** Low-priority webhook event → Batched processing via Bulk API
+   - **Technical Implementation:** Low-priority webhook event → Batched in DynamoDB → Bulk API processing
 
 5. **Subscription Modifications:**
    - Customer upgrades/downgrades subscription in Stripe
@@ -608,7 +612,7 @@ As you build the integration, you'll need to make these key technical decisions 
 **Questions to Answer:**
 - What Stripe events do you need to handle based on the business requirements?
   - **Answer:** 9 critical events (see technical.md webhook table)
-  - High-priority: payment failures, subscription cancellations, checkout completions
+  - High-priority: payment failures, subscription cancellations, checkout completions, new subscription creation (`customer.subscription.created`)
   - Low-priority: customer updates, metadata changes
 
 - How will you ensure webhook data is processed reliably?
@@ -667,7 +671,7 @@ As you build the integration, you'll need to make these key technical decisions 
 
 - ✅ System must handle bulk operations efficiently (200+ records)
 - ✅ Failed operations must be retried automatically (exponential backoff, max 5 attempts)
-- ✅ All integration events must be logged for troubleshooting (Nebula Logger + Coralogix)
+- ✅ All integration events must be logged for troubleshooting (Nebula Logger + CloudWatch)
 - ✅ Performance must meet Salesforce governor limits (bulkification required)
 - ✅ Webhook processing within 5 seconds (p95)
 - ✅ Support 100+ webhook events per minute
@@ -689,8 +693,9 @@ As you build the integration, you'll need to make these key technical decisions 
 - **Custom Metadata Types:** For configuration management (pricing plans)
 - **Queueable Classes:** For asynchronous processing in Salesforce
 - **FastAPI:** Modern Python web framework for middleware
-- **AWS Services:** SQS, Redis, Secrets Manager, Lambda/ECS
-- **Coralogix:** Centralized logging and monitoring
+- **AWS Services:** SQS, DynamoDB, Secrets Manager, Lambda
+- **CloudWatch:** Centralized logging and monitoring
+- **Docker:** For local development and testing
 
 ---
 

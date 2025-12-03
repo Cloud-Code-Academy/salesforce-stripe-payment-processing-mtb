@@ -53,4 +53,10 @@ $RECYCLE.BIN/
 IlluminatedCloud/
 
 # Profiles
-/force-app/main/default/profiles
+force-app/main/default/profiles
+
+# Middleware
+/middleware/.aws-sam
+
+# Apex scripts
+/scripts/

@@ -3,6 +3,11 @@
     <description>Provides access to payment transaction object and all its fields.</description>
     <fieldPermissions>
         <editable>true</editable>
+        <field>Payment_Transaction__c.Failure_Reason__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
         <field>Payment_Transaction__c.Payment_Method_Type__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -13,7 +18,7 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Payment_Transaction__c.Stripe_Customer__c</field>
+        <field>Payment_Transaction__c.Stripe_Invoice_ID__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>
@@ -26,18 +31,13 @@
         <field>Payment_Transaction__c.Stripe_Subscription__c</field>
         <readable>true</readable>
     </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Payment_Transaction__c.Transaction_Type__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Stripe Payment Transaction Access</label>
-    <objectPermissions>
-        <allowCreate>true</allowCreate>
-        <allowDelete>true</allowDelete>
-        <allowEdit>true</allowEdit>
-        <allowRead>true</allowRead>
-        <modifyAllRecords>false</modifyAllRecords>
-        <object>Payment_Transaction__c</object>
-        <viewAllFields>false</viewAllFields>
-        <viewAllRecords>false</viewAllRecords>
-    </objectPermissions>
     <tabSettings>
         <tab>Payment_Transaction__c</tab>
         <visibility>Visible</visibility>

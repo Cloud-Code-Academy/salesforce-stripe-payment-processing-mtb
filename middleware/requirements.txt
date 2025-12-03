@@ -1,0 +1,50 @@
+# FastAPI and Web Framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+
+# HTTP Client
+httpx==0.27.2
+
+# Data Validation
+pydantic==2.9.2
+pydantic-settings==2.6.0
+
+# AWS Services
+boto3==1.35.36
+aioboto3==13.2.0
+
+# Stripe
+stripe==11.1.0
+
+# Secrets Management (AWS Secrets Manager)
+python-jose[cryptography]==3.3.0
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# Logging
+python-json-logger==3.1.0
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+httpx==0.27.2
+
+# Development
+black==24.10.0
+ruff==0.7.3
+mypy==1.13.0
+
+# AWS Lambda Requirements
+# Optimized for Lambda deployment - minimal dependencies for faster cold starts
+
+mangum==0.18.0  # ASGI adapter for AWS Lambda
+
+# NOTE: The following are NOT needed for Lambda and excluded to reduce package size:
+# - uvicorn (Lambda uses API Gateway)
+# - python-multipart (if not using file uploads)
+# - testing libraries (pytest, etc.)
+

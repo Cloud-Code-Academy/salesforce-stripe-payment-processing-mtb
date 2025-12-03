@@ -27,9 +27,9 @@
                 <label>Pending</label>
             </value>
             <value>
-                <fullName>Synced</fullName>
+                <fullName>Completed</fullName>
                 <default>false</default>
-                <label>Synced</label>
+                <label>Completed</label>
             </value>
             <value>
                 <fullName>Checkout Created</fullName>
